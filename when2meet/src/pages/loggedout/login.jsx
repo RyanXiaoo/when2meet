@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 export default function Login() {
     const [formData, setFormData] = useState({
-        username: "",
+        email: "",
         password: "",
     });
 
@@ -34,16 +34,16 @@ export default function Login() {
 
                     <div className="space-y-2">
                         <label htmlFor="username" className="block text-white">
-                            Username
+                            Email
                         </label>
                         <input
-                            type="username"
-                            id="username"
-                            name="username"
-                            value={formData.username}
+                            type="email"
+                            id="email"
+                            name="email"
+                            value={formData.email}
                             onChange={handleChange}
                             className="w-full px-4 py-2 rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500"
-                            placeholder="Enter your username"
+                            placeholder="Enter your email"
                         />
                     </div>
 

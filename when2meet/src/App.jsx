@@ -10,7 +10,7 @@ import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 
 function App() {
     return (
-        <div className="min-h-screen bg-gray-900">
+        <div className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 min-h-screen">
             <Router>
                 <div className="container mx-auto px-4 py-8">
                     <Navbar />
@@ -19,7 +19,10 @@ function App() {
                     <Route path="/" element={<Home />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/sign-up" element={<SignUp />} />
-                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route
+                        path="/forgot-password"
+                        element={<ForgotPassword />}
+                    />
                 </Routes>
             </Router>
         </div>

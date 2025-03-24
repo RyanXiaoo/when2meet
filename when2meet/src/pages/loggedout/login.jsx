@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 export default function Login() {
     const [formData, setFormData] = useState({
-        email: "",
+        username: "",
         password: "",
     });
 
@@ -32,17 +33,17 @@ export default function Login() {
                     </h1>
 
                     <div className="space-y-2">
-                        <label htmlFor="email" className="block text-white">
-                            Email
+                        <label htmlFor="username" className="block text-white">
+                            Username
                         </label>
                         <input
-                            type="email"
-                            id="email"
-                            name="email"
-                            value={formData.email}
+                            type="username"
+                            id="username"
+                            name="username"
+                            value={formData.username}
                             onChange={handleChange}
                             className="w-full px-4 py-2 rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500"
-                            placeholder="Enter your email"
+                            placeholder="Enter your username"
                         />
                     </div>
 
@@ -59,6 +60,14 @@ export default function Login() {
                             className="w-full px-4 py-2 rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500"
                             placeholder="Enter your password"
                         />
+                        <div className="text-right">
+                            <Link
+                                to="/forgot-password"
+                                className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                            >
+                                Forgot Password?
+                            </Link>
+                        </div>
                     </div>
                 </div>
 

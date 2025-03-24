@@ -2,9 +2,10 @@ import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import Navbar from "./components/navbar";
-import Home from "./pages/Home";
-import SignUp from "./pages/SignUp";
-import Login from "./pages/login";
+import Home from "./pages/loggedout/home";
+import SignUp from "./pages/loggedout/signup";
+import Login from "./pages/loggedout/login";
+import ForgotPassword from "./pages/loggedout/forgotpassword";
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
                     <Route path="/" element={<Home />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/sign-up" element={<SignUp />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
                 </Routes>
             </Router>
         </div>

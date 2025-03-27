@@ -9,11 +9,12 @@ import ForgotPassword from "./pages/loggedout/forgotpassword";
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 
 function App() {
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
     return (
         <div className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 min-h-screen">
             <Router>
                 <div className="container mx-auto px-4 py-8">
-                    <Navbar />
+                    <Navbar isLoggedIn={isLoggedIn} setIsLoggedIn={setIsLoggedIn} />
                 </div>
                 <Routes>
                     <Route path="/" element={<Home />} />

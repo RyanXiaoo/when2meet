@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
+import friendRoutes from "./routes/friendRoutes.js";
 
 // Load environment variables BEFORE other configurations
 dotenv.config();
@@ -18,6 +19,7 @@ app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/friends", friendRoutes);
 
 app.get("/", (req, res) => {
     res.send("API is running...");

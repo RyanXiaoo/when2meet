@@ -1,0 +1,34 @@
+/* Base slide classes */
+.slide-hidden {
+    opacity: 0;
+    filter: blur(5px);
+    transform: translateX(-100%);
+    transition: all 1.5s;
+}
+
+.slide-hidden-right {
+    opacity: 0;
+    filter: blur(5px);
+    transform: translateX(100%);
+    transition: all 1.5s;
+}
+
+.slide-show {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0);
+}
+
+/* Delay classes for staggered animations */
+.delay-200 {
+    transition-delay: 200ms;
+}
+
+.delay-400 {
+    transition-delay: 400ms;
+}
+
+/* Optional: Add smooth scrolling to the whole page */
+html {
+    scroll-behavior: smooth;
+}

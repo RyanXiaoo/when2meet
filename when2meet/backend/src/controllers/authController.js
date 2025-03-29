@@ -16,7 +16,7 @@ const generateToken = (id, rememberMe = false) => {
 // @route   POST /api/auth/register
 export const register = async (req, res) => {
     try {
-        const { name, email, password } = req.body;
+        const { username, email, password } = req.body;
 
         // Validate password
         const { isValid, errors } = validatePassword(password);
@@ -34,7 +34,7 @@ export const register = async (req, res) => {
 
         // Create user
         const user = await User.create({
-            name,
+            username,
             email,
             password,
         });
@@ -42,7 +42,7 @@ export const register = async (req, res) => {
         if (user) {
             res.status(201).json({
                 _id: user._id,
-                name: user.name,
+                username: user.username,
                 email: user.email,
                 token: generateToken(user._id),
             });
@@ -63,7 +63,7 @@ export const login = async (req, res) => {
         if (user && (await user.matchPassword(password))) {
             res.json({
                 _id: user._id,
-                name: user.name,
+                username: user.username,
                 email: user.email,
                 token: generateToken(user._id, rememberMe),
             });

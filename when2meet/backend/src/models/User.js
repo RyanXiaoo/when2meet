@@ -2,9 +2,9 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
 const userSchema = new mongoose.Schema({
-    name: {
+    username: {
         type: String,
-        required: [true, "Please add a name"],
+        required: [true, "Please add a username"],
     },
     email: {
         type: String,

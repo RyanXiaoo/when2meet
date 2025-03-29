@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function SignUp() {
+    const navigate = useNavigate();
     const [formData, setFormData] = useState({
         username: "",
         email: "",
@@ -9,6 +11,8 @@ export default function SignUp() {
     });
     const [passwordMatch, setPasswordMatch] = useState(true);
     const [hasSubmitted, setHasSubmitted] = useState(false);
+    const [error, setError] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -27,16 +31,48 @@ export default function SignUp() {
         }
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError("");
+        setHasSubmitted(true);
+
         if (!passwordMatch) {
-            setHasSubmitted(true);
-            alert("Passwords do not match!");
-            setHasSubmitted(false); // Reset after showing error
+            setError("Passwords do not match!");
             return;
         }
-        // Handle form submission here
-        console.log("Form submitted:", formData);
+
+        if (!formData.username || !formData.email || !formData.password) {
+            setError("All fields are required");
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+            const response = await fetch("http://localhost:5000/api/auth/register", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    username: formData.username,
+                    email: formData.email,
+                    password: formData.password,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "Failed to create account");
+            }
+
+            // Successful signup
+            navigate("/login");
+        } catch (err) {
+            setError(err.message || "An error occurred during signup");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -48,6 +84,12 @@ export default function SignUp() {
                 <h1 className="text-2xl font-bold text-white text-center mb-6">
                     Sign Up
                 </h1>
+
+                {error && (
+                    <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
+                        {error}
+                    </div>
+                )}
 
                 <div className="space-y-2">
                     <label htmlFor="username" className="block text-white">
@@ -123,9 +165,10 @@ export default function SignUp() {
 
                 <button
                     type="submit"
-                    className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition-colors"
+                    className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
                 >
-                    Sign Up
+                    {isLoading ? "Creating Account..." : "Sign Up"}
                 </button>
             </form>
         </div>

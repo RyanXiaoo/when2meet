@@ -1,6 +1,23 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
+const friendRequestSchema = new mongoose.Schema({
+    from: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+    to: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+    },
+});
+
 const userSchema = new mongoose.Schema({
     username: {
         type: String,
@@ -27,12 +44,8 @@ const userSchema = new mongoose.Schema({
             ref: "User",
         },
     ],
-    friendRequests: [
-        {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-        },
-    ],
+    friendRequests: [friendRequestSchema], // Received requests
+    sentFriendRequests: [friendRequestSchema], // Sent requests
     resetPasswordToken: String,
     resetPasswordExpire: Date,
     createdAt: {

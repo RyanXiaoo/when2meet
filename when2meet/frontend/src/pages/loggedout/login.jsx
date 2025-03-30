@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Login() {
     const navigate = useNavigate();
+    const { login } = useAuth();
     const [formData, setFormData] = useState({
         email: "",
         password: "",
         rememberMe: false,
     });
+    const [error, setError] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -19,18 +23,24 @@ export default function Login() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setError("");
+        setIsLoading(true);
+
         try {
-            const response = await fetch("/api/auth/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    email: formData.email,
-                    password: formData.password,
-                    rememberMe: formData.rememberMe,
-                }),
-            });
+            const response = await fetch(
+                `${import.meta.env.VITE_API_URL}/auth/login`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        email: formData.email,
+                        password: formData.password,
+                        rememberMe: formData.rememberMe,
+                    }),
+                }
+            );
 
             const data = await response.json();
 
@@ -41,22 +51,23 @@ export default function Login() {
                 } else {
                     sessionStorage.setItem("token", data.token);
                 }
-                // Store user info
-                localStorage.setItem(
-                    "user",
-                    JSON.stringify({
-                        id: data._id,
-                        name: data.name,
-                        email: data.email,
-                    })
-                );
+
+                // Update auth context
+                login({
+                    id: data._id,
+                    username: data.username,
+                    email: data.email,
+                });
+
                 navigate("/dashboard");
             } else {
-                alert(data.message || "Login failed");
+                setError(data.message || "Login failed");
             }
         } catch (error) {
             console.error("Login error:", error);
-            alert("An error occurred during login");
+            setError("An error occurred during login. Please try again.");
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -70,6 +81,12 @@ export default function Login() {
                     <h1 className="text-2xl font-bold text-white text-center mb-6">
                         Login
                     </h1>
+
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
+                            {error}
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <label htmlFor="email" className="block text-white">
@@ -132,9 +149,10 @@ export default function Login() {
 
                 <button
                     type="submit"
-                    className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition-colors"
+                    className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
                 >
-                    Login
+                    {isLoading ? "Logging in..." : "Login"}
                 </button>
             </form>
         </div>

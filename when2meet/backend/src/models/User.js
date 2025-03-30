@@ -81,6 +81,26 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
     },
+    googleCalendar: {
+        accessToken: String,
+        refreshToken: String,
+        expiry: Date,
+    },
+    notion: {
+        accessToken: String,
+        workspaceId: String,
+    },
+    calendarEvents: [
+        {
+            title: String,
+            start: Date,
+            end: Date,
+            source: {
+                type: String,
+                enum: ["google", "notion"],
+            },
+        },
+    ],
 });
 
 // Encrypt password using bcrypt

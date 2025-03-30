@@ -3,6 +3,7 @@ import calendar from "../../images/calendar.svg";
 import friends from "../../images/friends.svg";
 import perfecttime from "../../images/perfecttime.svg";
 import { useIntersectionObserver } from "../../hooks/useIntersectionObserver";
+import "../../styles/animations.css";
 
 export default function Home() {
     const step1Ref = useRef(null);

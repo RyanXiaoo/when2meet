@@ -10,11 +10,11 @@ import SignUp from "./pages/loggedout/signup";
 import Login from "./pages/loggedout/login";
 import ForgotPassword from "./components/forgotpassword";
 import Dashboard from "./pages/loggedin/dashboard";
+import Calendar from "./pages/loggedin/Calendar";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import FriendsList from "./pages/loggedin/friends/FriendsList";
 import FriendRequests from "./pages/loggedin/friends/FriendRequests";
 import SentRequests from "./pages/loggedin/friends/SentRequests";
-import FriendsNav from "./pages/loggedin/friends/FriendsNav";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -56,13 +56,18 @@ function App() {
                             }
                         />
                         <Route
+                            path="/calendar"
+                            element={
+                                <ProtectedRoute>
+                                    <Calendar />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
                             path="/friends"
                             element={
                                 <ProtectedRoute>
-                                    <>
-                                        <FriendsNav />
-                                        <FriendsList />
-                                    </>
+                                    <FriendsList />
                                 </ProtectedRoute>
                             }
                         />
@@ -70,10 +75,7 @@ function App() {
                             path="/friends/requests"
                             element={
                                 <ProtectedRoute>
-                                    <>
-                                        <FriendsNav />
-                                        <FriendRequests />
-                                    </>
+                                    <FriendRequests />
                                 </ProtectedRoute>
                             }
                         />
@@ -81,10 +83,7 @@ function App() {
                             path="/friends/sent"
                             element={
                                 <ProtectedRoute>
-                                    <>
-                                        <FriendsNav />
-                                        <SentRequests />
-                                    </>
+                                    <SentRequests />
                                 </ProtectedRoute>
                             }
                         />

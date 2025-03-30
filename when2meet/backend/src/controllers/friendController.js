@@ -67,8 +67,19 @@ export const addFriend = async (req, res) => {
     try {
         const { email } = req.body;
 
+        // Input validation
+        if (!email) {
+            return res.status(400).json({ message: "Email is required" });
+        }
+
+        // Get current user
+        const currentUser = await User.findById(req.user.id);
+        if (!currentUser) {
+            return res.status(404).json({ message: "Current user not found" });
+        }
+
         // Can't add yourself
-        if (req.user.email === email) {
+        if (currentUser.email === email) {
             return res
                 .status(400)
                 .json({ message: "You cannot add yourself as a friend" });
@@ -81,67 +92,66 @@ export const addFriend = async (req, res) => {
         }
 
         // Check if already friends
-        if (friendToAdd.friends.includes(req.user.id)) {
+        if (currentUser.friends.includes(friendToAdd._id)) {
             return res
                 .status(400)
                 .json({ message: "Already friends with this user" });
         }
 
-        // Get the sender
-        const sender = await User.findById(req.user.id);
-
-        // Check if friend request already sent
-        const existingRequest = sender.sentFriendRequests.find(
-            (request) => request.to?.toString() === friendToAdd._id.toString()
+        // Check if friend request already exists
+        const existingRequest = currentUser.sentFriendRequests.find(
+            (request) => request.to.toString() === friendToAdd._id.toString()
         );
-
         if (existingRequest) {
             return res
                 .status(400)
                 .json({ message: "Friend request already sent" });
         }
 
-        // Create the friend request with proper MongoDB ObjectIds
-        const requestData = {
-            _id: new mongoose.Types.ObjectId(), // Generate a new ObjectId
-            from: sender._id,
+        // Check if there's a pending request from the other user
+        const pendingRequest = currentUser.friendRequests.find(
+            (request) => request.from.toString() === friendToAdd._id.toString()
+        );
+        if (pendingRequest) {
+            return res.status(400).json({
+                message: "This user has already sent you a friend request",
+            });
+        }
+
+        // Create friend request
+        const friendRequest = {
+            _id: new mongoose.Types.ObjectId(),
+            from: currentUser._id,
             to: friendToAdd._id,
             createdAt: new Date(),
         };
 
-        console.log("Creating request with data:", requestData); // Debug log
-
-        // Add to recipient's received requests
-        friendToAdd.friendRequests.push(requestData);
-
-        // Add to sender's sent requests
-        sender.sentFriendRequests.push(requestData);
+        // Add request to both users
+        currentUser.sentFriendRequests.push(friendRequest);
+        friendToAdd.friendRequests.push(friendRequest);
 
         // Save both users
-        await Promise.all([friendToAdd.save(), sender.save()]);
+        await Promise.all([currentUser.save(), friendToAdd.save()]);
 
-        console.log("After save - sender requests:", sender.sentFriendRequests); // Debug log
-
-        // Fetch the populated sent request to return
-        const populatedSender = await User.findById(sender._id).populate({
-            path: "sentFriendRequests.to",
-            select: "username email",
-        });
-
-        const newRequest =
-            populatedSender.sentFriendRequests[
-                populatedSender.sentFriendRequests.length - 1
-            ];
-
-        console.log("Populated request to return:", newRequest); // Debug log
-
-        res.json({
+        // Return success response
+        res.status(200).json({
             message: "Friend request sent successfully",
-            request: newRequest,
+            request: {
+                id: friendRequest._id,
+                to: {
+                    id: friendToAdd._id,
+                    username: friendToAdd.username,
+                    email: friendToAdd.email,
+                },
+                createdAt: friendRequest.createdAt,
+            },
         });
     } catch (error) {
-        console.error("Error in addFriend:", error); // Debug log
-        res.status(500).json({ message: error.message });
+        console.error("Error in addFriend:", error);
+        res.status(500).json({
+            message: "Failed to send friend request",
+            error: error.message,
+        });
     }
 };
 

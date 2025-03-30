@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import api from "../../../utils/api";
 
 export default function FriendsList() {
     const [friends, setFriends] = useState([]);
@@ -8,6 +8,7 @@ export default function FriendsList() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [friendEmail, setFriendEmail] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         fetchFriends();
@@ -15,44 +16,60 @@ export default function FriendsList() {
 
     const fetchFriends = async () => {
         try {
-            const response = await axios.get("/friends");
+            setIsLoading(true);
+            const response = await api.get("/friends");
             setFriends(response.data.friends || []);
+            setError("");
         } catch (error) {
             console.error(
                 "Error fetching friends:",
                 error.response?.data || error.message
             );
             setError("Failed to fetch friends");
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const handleRemoveFriend = async (friendId) => {
         try {
-            await axios.delete(`/friends/remove/${friendId}`);
+            setIsLoading(true);
+            await api.delete(`/friends/remove/${friendId}`);
             setFriends((prevFriends) =>
                 prevFriends.filter((friend) => friend._id !== friendId)
             );
             setSuccess("Friend removed successfully!");
+            setError("");
         } catch (error) {
             console.error("Error removing friend:", error.response?.data);
             setError(
                 error.response?.data?.message || "Failed to remove friend"
             );
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const handleAddFriend = async (e) => {
         e.preventDefault();
         try {
-            await axios.post("/friends/request", { email: friendEmail });
+            setIsLoading(true);
+            setError("");
+            setSuccess("");
+
+            const response = await api.post("/friends/request", {
+                email: friendEmail,
+            });
+
             setSuccess("Friend request sent successfully!");
             setFriendEmail("");
-            setError("");
         } catch (error) {
+            console.error("Error sending friend request:", error);
             setError(
                 error.response?.data?.message || "Failed to send friend request"
             );
-            setSuccess("");
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -78,12 +95,16 @@ export default function FriendsList() {
                             placeholder="Enter friend's email"
                             className="bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                             required
+                            disabled={isLoading}
                         />
                         <button
                             type="submit"
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className={`bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                isLoading ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            disabled={isLoading}
                         >
-                            Add Friend
+                            {isLoading ? "Adding..." : "Add Friend"}
                         </button>
                     </form>
                 </div>

@@ -18,6 +18,20 @@ const friendRequestSchema = new mongoose.Schema({
     },
 });
 
+const friendGroupSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+        trim: true,
+    },
+    friends: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+        },
+    ],
+});
+
 const userSchema = new mongoose.Schema({
     username: {
         type: String,
@@ -44,8 +58,23 @@ const userSchema = new mongoose.Schema({
             ref: "User",
         },
     ],
+    friendGroups: [friendGroupSchema],
     friendRequests: [friendRequestSchema], // Received requests
     sentFriendRequests: [friendRequestSchema], // Sent requests
+    lastActive: {
+        type: Date,
+        default: Date.now,
+    },
+    isOnline: {
+        type: Boolean,
+        default: false,
+    },
+    blockedUsers: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+        },
+    ],
     resetPasswordToken: String,
     resetPasswordExpire: Date,
     createdAt: {

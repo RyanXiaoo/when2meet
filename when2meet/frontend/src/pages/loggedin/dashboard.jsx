@@ -24,6 +24,7 @@ export default function Dashboard() {
     const [success, setSuccess] = useState("");
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState("");
+    const [searchTerm, setSearchTerm] = useState("");
 
     // Fetch friends and friend requests
     useEffect(() => {
@@ -111,9 +112,23 @@ export default function Dashboard() {
     const handleAcceptRequest = async (requestId) => {
         try {
             const response = await axios.post(`/friends/accept/${requestId}`);
+
+            // Add the new friend to the friends list
+            if (response.data.friend) {
+                setFriends((prevFriends) => [
+                    ...prevFriends,
+                    response.data.friend,
+                ]);
+            }
+
+            // Remove the request from the requests list
+            setFriendRequests((prevRequests) =>
+                prevRequests.filter((request) => request._id !== requestId)
+            );
+
             setSuccess("Friend request accepted!");
-            await Promise.all([fetchFriendRequests(), fetchFriends()]);
         } catch (error) {
+            console.error("Error accepting request:", error.response?.data);
             setError(
                 error.response?.data?.message ||
                     "Failed to accept friend request"
@@ -124,9 +139,15 @@ export default function Dashboard() {
     const handleDeclineRequest = async (requestId) => {
         try {
             const response = await axios.post(`/friends/decline/${requestId}`);
+
+            // Remove the request from the requests list
+            setFriendRequests((prevRequests) =>
+                prevRequests.filter((request) => request._id !== requestId)
+            );
+
             setSuccess("Friend request declined!");
-            await fetchFriendRequests();
         } catch (error) {
+            console.error("Error declining request:", error.response?.data);
             setError(
                 error.response?.data?.message ||
                     "Failed to decline friend request"
@@ -158,6 +179,27 @@ export default function Dashboard() {
             );
         }
     };
+
+    const handleRemoveFriend = async (friendId) => {
+        try {
+            await axios.delete(`/friends/remove/${friendId}`);
+            setFriends((prevFriends) =>
+                prevFriends.filter((friend) => friend._id !== friendId)
+            );
+            setSuccess("Friend removed successfully!");
+        } catch (error) {
+            console.error("Error removing friend:", error.response?.data);
+            setError(
+                error.response?.data?.message || "Failed to remove friend"
+            );
+        }
+    };
+
+    const filteredFriends = friends.filter(
+        (friend) =>
+            friend.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            friend.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     return (
         <div className="container mx-auto px-4 pt-20">
@@ -271,7 +313,7 @@ export default function Dashboard() {
                         <h2 className="text-xl font-semibold mb-4">
                             Friend Requests
                         </h2>
-                        {friendRequests.length === 0 ? (
+                        {!friendRequests || friendRequests.length === 0 ? (
                             <p className="text-gray-400">
                                 No pending friend requests
                             </p>
@@ -282,8 +324,22 @@ export default function Dashboard() {
                                         key={request._id}
                                         className="flex items-center justify-between bg-gray-700 p-3 rounded-lg"
                                     >
-                                        <span>{request.from.username}</span>
-                                        <div className="flex gap-2">
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">
+                                                {request.from?.username ||
+                                                    "Loading..."}
+                                            </span>
+                                            <span className="text-gray-400 text-sm">
+                                                {request.from?.email || ""}
+                                            </span>
+                                            <span className="text-gray-400 text-xs">
+                                                Received:{" "}
+                                                {new Date(
+                                                    request.createdAt
+                                                ).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <div className="flex space-x-2">
                                             <button
                                                 onClick={() =>
                                                     handleAcceptRequest(
@@ -316,21 +372,47 @@ export default function Dashboard() {
                         <h2 className="text-xl font-semibold mb-4">
                             Your Friends
                         </h2>
-                        {friends.length === 0 ? (
+
+                        {/* Search Input */}
+                        <div className="mb-4">
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Search friends..."
+                                className="w-full px-4 py-2 rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500"
+                            />
+                        </div>
+
+                        {filteredFriends.length === 0 ? (
                             <p className="text-gray-400">
-                                No friends added yet
+                                {searchTerm
+                                    ? "No friends match your search"
+                                    : "No friends added yet"}
                             </p>
                         ) : (
                             <ul className="space-y-3">
-                                {friends.map((friend) => (
+                                {filteredFriends.map((friend) => (
                                     <li
                                         key={friend._id}
                                         className="flex items-center justify-between bg-gray-700 p-3 rounded-lg"
                                     >
-                                        <span>{friend.username}</span>
-                                        <span className="text-gray-400 text-sm">
-                                            {friend.email}
-                                        </span>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">
+                                                {friend.username}
+                                            </span>
+                                            <span className="text-gray-400 text-sm">
+                                                {friend.email}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={() =>
+                                                handleRemoveFriend(friend._id)
+                                            }
+                                            className="bg-red-600 text-white px-4 py-1 rounded-md hover:bg-red-700 transition-colors"
+                                        >
+                                            Remove Friend
+                                        </button>
                                     </li>
                                 ))}
                             </ul>

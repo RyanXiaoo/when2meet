@@ -209,26 +209,54 @@ export const acceptFriend = async (req, res) => {
         const user = await User.findById(req.user.id);
 
         // Find the friend request
-        const friendRequest = user.friendRequests.id(requestId);
-        if (!friendRequest) {
+        const requestIndex = user.friendRequests.findIndex(
+            (request) => request._id.toString() === requestId
+        );
+
+        if (requestIndex === -1) {
             return res
                 .status(404)
                 .json({ message: "Friend request not found" });
         }
 
-        // Add each other as friends
+        const friendRequest = user.friendRequests[requestIndex];
         const friendId = friendRequest.from;
-        user.friends.push(friendId);
+
+        // Find the friend who sent the request
         const friend = await User.findById(friendId);
-        friend.friends.push(user._id);
+        if (!friend) {
+            return res.status(404).json({ message: "Friend not found" });
+        }
 
-        // Remove the friend request
-        friendRequest.remove();
+        // Add each other as friends (if not already friends)
+        if (!user.friends.includes(friendId)) {
+            user.friends.push(friendId);
+        }
+        if (!friend.friends.includes(user._id)) {
+            friend.friends.push(user._id);
+        }
 
+        // Remove the friend request from recipient
+        user.friendRequests.splice(requestIndex, 1);
+
+        // Remove from sender's sent requests
+        friend.sentFriendRequests = friend.sentFriendRequests.filter(
+            (request) => request.to.toString() !== user._id.toString()
+        );
+
+        // Save both users
         await Promise.all([user.save(), friend.save()]);
 
-        res.json({ message: "Friend request accepted" });
+        res.json({
+            message: "Friend request accepted",
+            friend: {
+                _id: friend._id,
+                username: friend.username,
+                email: friend.email,
+            },
+        });
     } catch (error) {
+        console.error("Error in acceptFriend:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -241,19 +269,40 @@ export const declineFriend = async (req, res) => {
         const { requestId } = req.params;
         const user = await User.findById(req.user.id);
 
-        // Find and remove the friend request
-        const friendRequest = user.friendRequests.id(requestId);
-        if (!friendRequest) {
+        // Find the friend request
+        const requestIndex = user.friendRequests.findIndex(
+            (request) => request._id.toString() === requestId
+        );
+
+        if (requestIndex === -1) {
             return res
                 .status(404)
                 .json({ message: "Friend request not found" });
         }
 
-        friendRequest.remove();
-        await user.save();
+        const friendRequest = user.friendRequests[requestIndex];
+        const friendId = friendRequest.from;
+
+        // Find the friend who sent the request
+        const friend = await User.findById(friendId);
+        if (!friend) {
+            return res.status(404).json({ message: "Friend not found" });
+        }
+
+        // Remove the friend request from recipient
+        user.friendRequests.splice(requestIndex, 1);
+
+        // Remove from sender's sent requests
+        friend.sentFriendRequests = friend.sentFriendRequests.filter(
+            (request) => request.to.toString() !== user._id.toString()
+        );
+
+        // Save both users
+        await Promise.all([user.save(), friend.save()]);
 
         res.json({ message: "Friend request declined" });
     } catch (error) {
+        console.error("Error in declineFriend:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -265,22 +314,29 @@ export const removeFriend = async (req, res) => {
     try {
         const { friendId } = req.params;
         const user = await User.findById(req.user.id);
-        const friend = await User.findById(friendId);
 
+        // Check if the friend exists
+        const friend = await User.findById(friendId);
         if (!friend) {
             return res.status(404).json({ message: "Friend not found" });
         }
 
-        // Remove each other from friends lists
-        user.friends = user.friends.filter((id) => id.toString() !== friendId);
-        friend.friends = friend.friends.filter(
-            (id) => id.toString() !== req.user.id
+        // Remove friend from user's friends list
+        user.friends = user.friends.filter(
+            (id) => id.toString() !== friendId.toString()
         );
 
+        // Remove user from friend's friends list
+        friend.friends = friend.friends.filter(
+            (id) => id.toString() !== user._id.toString()
+        );
+
+        // Save both users
         await Promise.all([user.save(), friend.save()]);
 
         res.json({ message: "Friend removed successfully" });
     } catch (error) {
+        console.error("Error in removeFriend:", error);
         res.status(500).json({ message: error.message });
     }
 };

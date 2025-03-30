@@ -11,6 +11,10 @@ import Login from "./pages/loggedout/login";
 import ForgotPassword from "./components/forgotpassword";
 import Dashboard from "./pages/loggedin/dashboard";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import FriendsList from "./pages/loggedin/friends/FriendsList";
+import FriendRequests from "./pages/loggedin/friends/FriendRequests";
+import SentRequests from "./pages/loggedin/friends/SentRequests";
+import FriendsNav from "./pages/loggedin/friends/FriendsNav";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -48,6 +52,39 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <Dashboard />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/friends"
+                            element={
+                                <ProtectedRoute>
+                                    <>
+                                        <FriendsNav />
+                                        <FriendsList />
+                                    </>
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/friends/requests"
+                            element={
+                                <ProtectedRoute>
+                                    <>
+                                        <FriendsNav />
+                                        <FriendRequests />
+                                    </>
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/friends/sent"
+                            element={
+                                <ProtectedRoute>
+                                    <>
+                                        <FriendsNav />
+                                        <SentRequests />
+                                    </>
                                 </ProtectedRoute>
                             }
                         />

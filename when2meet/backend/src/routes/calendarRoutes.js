@@ -1,5 +1,5 @@
 import express from "express";
-import { authenticateUser } from "../middleware/auth.js";
+import { protect } from "../middleware/authMiddleware.js";
 import {
     initiateGoogleAuth,
     handleGoogleCallback,
@@ -7,18 +7,26 @@ import {
     handleNotionCallback,
     syncGoogleCalendar,
     syncNotionCalendar,
+    getCalendarEvents,
+    getCalendarStatus,
 } from "../controllers/calendarController.js";
 
 const router = express.Router();
 
 // Google Calendar routes
-router.get("/auth/google/calendar", authenticateUser, initiateGoogleAuth);
-router.get("/auth/google/callback", authenticateUser, handleGoogleCallback);
-router.post("/sync/google", authenticateUser, syncGoogleCalendar);
+router.get("/auth/google/calendar", initiateGoogleAuth);
+router.get("/auth/google/calendar/callback", protect, handleGoogleCallback);
+router.post("/sync/google", protect, syncGoogleCalendar);
 
 // Notion routes
-router.get("/auth/notion", authenticateUser, initiateNotionAuth);
-router.get("/auth/notion/callback", authenticateUser, handleNotionCallback);
-router.post("/sync/notion", authenticateUser, syncNotionCalendar);
+router.get("/auth/notion", protect, initiateNotionAuth);
+router.get("/auth/notion/callback", protect, handleNotionCallback);
+router.post("/sync/notion", protect, syncNotionCalendar);
+
+// Status routes
+router.get("/status/:source", protect, getCalendarStatus);
+
+// Get calendar events
+router.get("/events/:source", protect, getCalendarEvents);
 
 export default router;

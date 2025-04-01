@@ -9,16 +9,36 @@ const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_REDIRECT_URI
 );
 
+// Log the configuration
+console.log("OAuth2 Client Configuration:", {
+    clientId: process.env.GOOGLE_CLIENT_ID?.substring(0, 10) + "...",
+    redirectUri: process.env.GOOGLE_REDIRECT_URI,
+});
+
 // Google Calendar API scope
 const SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"];
 
 export const initiateGoogleAuth = (req, res) => {
-    const authUrl = oauth2Client.generateAuthUrl({
-        access_type: "offline",
-        scope: SCOPES,
-        state: req.user._id.toString(), // Pass user ID in state
-    });
-    res.redirect(authUrl);
+    try {
+        // Manually construct the auth URL with all required parameters
+        const baseUrl = "https://accounts.google.com/o/oauth2/v2/auth";
+        const params = new URLSearchParams({
+            client_id: process.env.GOOGLE_CLIENT_ID,
+            redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+            response_type: "code",
+            access_type: "offline",
+            scope: SCOPES.join(" "),
+            include_granted_scopes: "true",
+            prompt: "consent",
+        });
+
+        const authUrl = `${baseUrl}?${params.toString()}`;
+        console.log("Generated Auth URL:", authUrl);
+        res.json({ url: authUrl });
+    } catch (error) {
+        console.error("Google Auth Error:", error);
+        res.status(500).json({ message: "Failed to initiate Google auth" });
+    }
 };
 
 export const handleGoogleCallback = async (req, res) => {
@@ -90,7 +110,7 @@ export const initiateNotionAuth = (req, res) => {
     const notionAuthUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${
         process.env.NOTION_CLIENT_ID
     }&response_type=code&owner=user&state=${req.user._id.toString()}`;
-    res.redirect(notionAuthUrl);
+    res.json({ url: notionAuthUrl });
 };
 
 export const handleNotionCallback = async (req, res) => {
@@ -169,5 +189,129 @@ export const syncNotionCalendar = async (req, res) => {
     } catch (error) {
         console.error("Notion Calendar Sync Error:", error);
         res.status(500).json({ message: "Failed to sync Notion calendar" });
+    }
+};
+
+export const getCalendarEvents = async (req, res) => {
+    try {
+        const { source } = req.params;
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        let events = [];
+
+        if (source === "google") {
+            if (!user.googleCalendar?.accessToken) {
+                return res
+                    .status(400)
+                    .json({ message: "Google Calendar not connected" });
+            }
+
+            // Set up OAuth2 client with user's tokens
+            oauth2Client.setCredentials({
+                access_token: user.googleCalendar.accessToken,
+                refresh_token: user.googleCalendar.refreshToken,
+            });
+
+            const calendar = google.calendar({
+                version: "v3",
+                auth: oauth2Client,
+            });
+
+            // Get events for next 30 days
+            const now = new Date();
+            const thirtyDaysFromNow = new Date(
+                now.getTime() + 30 * 24 * 60 * 60 * 1000
+            );
+
+            const response = await calendar.events.list({
+                calendarId: "primary",
+                timeMin: now.toISOString(),
+                timeMax: thirtyDaysFromNow.toISOString(),
+                singleEvents: true,
+                orderBy: "startTime",
+            });
+
+            events = response.data.items.map((event) => ({
+                id: event.id,
+                title: event.summary,
+                start: event.start.dateTime || event.start.date,
+                end: event.end.dateTime || event.end.date,
+                source: "google",
+            }));
+        } else if (source === "notion") {
+            if (!user.notion?.accessToken) {
+                return res
+                    .status(400)
+                    .json({ message: "Notion not connected" });
+            }
+
+            const notion = new Client({ auth: user.notion.accessToken });
+
+            // Query Notion database for calendar events
+            const response = await notion.databases.query({
+                database_id: user.notion.calendarDatabaseId,
+                filter: {
+                    and: [
+                        {
+                            property: "Date",
+                            date: {
+                                is_not_empty: true,
+                            },
+                        },
+                    ],
+                },
+                sorts: [
+                    {
+                        property: "Date",
+                        direction: "ascending",
+                    },
+                ],
+            });
+
+            events = response.results.map((page) => ({
+                id: page.id,
+                title: page.properties.Name.title[0]?.plain_text || "Untitled",
+                start: page.properties.Date.date.start,
+                end:
+                    page.properties.Date.date.end ||
+                    page.properties.Date.date.start,
+                source: "notion",
+            }));
+        } else {
+            return res.status(400).json({ message: "Invalid calendar source" });
+        }
+
+        res.json({ events });
+    } catch (error) {
+        console.error("Calendar Events Error:", error);
+        res.status(500).json({ message: "Failed to fetch calendar events" });
+    }
+};
+
+export const getCalendarStatus = async (req, res) => {
+    try {
+        const { source } = req.params;
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (source === "google") {
+            const connected = !!user.googleCalendar?.accessToken;
+            return res.json({ connected });
+        } else if (source === "notion") {
+            const connected = !!user.notion?.accessToken;
+            return res.json({ connected });
+        }
+
+        res.status(400).json({ message: "Invalid calendar source" });
+    } catch (error) {
+        console.error("Calendar Status Error:", error);
+        res.status(500).json({ message: "Failed to get calendar status" });
     }
 };

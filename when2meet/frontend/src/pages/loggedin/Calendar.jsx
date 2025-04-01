@@ -1,200 +1,61 @@
-import { useState, useEffect } from "react";
-import axios from "../../utils/axios";
-import { useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 export default function Calendar() {
-    const [activeCalendar, setActiveCalendar] = useState("google");
-    const [isConnected, setIsConnected] = useState({
-        google: false,
-        notion: false,
-    });
-    const [events, setEvents] = useState([]);
-    const [error, setError] = useState("");
-    const [success, setSuccess] = useState("");
-    const location = useLocation();
-
-    // Check connection status and get events on mount
-    useEffect(() => {
-        checkConnectionStatus();
-        fetchEvents();
-
-        // Check for connection success/error from OAuth callback
-        const params = new URLSearchParams(location.search);
-        if (params.get("connection") === "success") {
-            setSuccess("Calendar connected successfully!");
-            checkConnectionStatus(); // Refresh status
-            fetchEvents(); // Get new events
-        }
-        if (params.get("error")) {
-            setError(params.get("error"));
-        }
-    }, [location]);
-
-    const checkConnectionStatus = async () => {
-        try {
-            const response = await axios.get("/calendar/status");
-            setIsConnected(response.data);
-        } catch (error) {
-            console.error("Error checking calendar status:", error);
-            setError("Failed to check calendar connection status");
-        }
-    };
-
-    const fetchEvents = async () => {
-        try {
-            const response = await axios.get("/calendar/events");
-            setEvents(response.data.events);
-        } catch (error) {
-            console.error("Error fetching events:", error);
-            setError("Failed to fetch calendar events");
-        }
-    };
-
-    const handleConnect = async (provider) => {
-        try {
-            const response = await axios.get(`/calendar/auth/${provider}`);
-            window.location.href = response.data.url;
-        } catch (error) {
-            console.error(`Error connecting to ${provider}:`, error);
-            setError(`Failed to connect to ${provider}`);
-        }
-    };
-
-    const handleDisconnect = async (provider) => {
-        try {
-            await axios.delete(`/calendar/disconnect/${provider}`);
-            setIsConnected((prev) => ({ ...prev, [provider]: false }));
-            setSuccess(`${provider} calendar disconnected successfully`);
-            setEvents(events.filter((event) => event.source !== provider));
-        } catch (error) {
-            console.error(`Error disconnecting ${provider}:`, error);
-            setError(`Failed to disconnect ${provider}`);
-        }
-    };
-
     return (
         <div className="container mx-auto px-4 pt-6">
             <div className="bg-gray-800 rounded-lg p-6 text-white">
-                <div className="flex justify-between items-center mb-6">
-                    <h1 className="text-3xl font-bold">Calendar</h1>
-                    <div className="flex space-x-4">
-                        <button
-                            className={`px-4 py-2 rounded-lg transition-colors ${
-                                activeCalendar === "google"
-                                    ? "bg-blue-600 text-white"
-                                    : "bg-gray-700 hover:bg-gray-600"
-                            }`}
-                            onClick={() => setActiveCalendar("google")}
-                        >
-                            Google Calendar
-                        </button>
-                        <button
-                            className={`px-4 py-2 rounded-lg transition-colors ${
-                                activeCalendar === "notion"
-                                    ? "bg-blue-600 text-white"
-                                    : "bg-gray-700 hover:bg-gray-600"
-                            }`}
-                            onClick={() => setActiveCalendar("notion")}
-                        >
-                            Notion Calendar
-                        </button>
-                    </div>
-                </div>
+                <h1 className="text-3xl font-bold mb-8">
+                    Choose Your Calendar
+                </h1>
 
-                {error && (
-                    <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded mb-4">
-                        {error}
-                    </div>
-                )}
-
-                {success && (
-                    <div className="bg-green-500/10 border border-green-500 text-green-500 px-4 py-2 rounded mb-4">
-                        {success}
-                    </div>
-                )}
-
-                {/* Calendar Integration Section */}
-                <div className="bg-gray-700 rounded-lg p-6 mb-6">
-                    <h2 className="text-xl font-semibold mb-4">
-                        {activeCalendar === "google"
-                            ? "Google Calendar"
-                            : "Notion"}{" "}
-                        Integration
-                    </h2>
-                    {!isConnected[activeCalendar] ? (
-                        <div className="text-center">
-                            <p className="mb-4">
-                                Connect your{" "}
-                                {activeCalendar === "google"
-                                    ? "Google Calendar"
-                                    : "Notion"}{" "}
-                                account to sync your events
-                            </p>
-                            <button
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
-                                onClick={() => handleConnect(activeCalendar)}
-                            >
-                                Connect{" "}
-                                {activeCalendar === "google"
-                                    ? "Google Calendar"
-                                    : "Notion"}
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="text-center">
-                            <p className="text-green-400 mb-4">
-                                ✓ Connected to{" "}
-                                {activeCalendar === "google"
-                                    ? "Google Calendar"
-                                    : "Notion"}
-                            </p>
-                            <button
-                                className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg transition-colors"
-                                onClick={() => handleDisconnect(activeCalendar)}
-                            >
-                                Disconnect
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                {/* Calendar Events Section */}
-                <div className="bg-gray-700 rounded-lg p-6">
-                    <h2 className="text-xl font-semibold mb-4">
-                        Upcoming Events
-                    </h2>
-                    {events.length === 0 ? (
-                        <p className="text-gray-400 text-center">
-                            No upcoming events
-                        </p>
-                    ) : (
-                        <div className="space-y-4">
-                            {events.map((event) => (
-                                <div
-                                    key={`${event.source}-${event.id}`}
-                                    className="flex items-center justify-between bg-gray-600 p-4 rounded-lg"
-                                >
-                                    <div>
-                                        <h3 className="font-medium">
-                                            {event.title}
-                                        </h3>
-                                        <p className="text-sm text-gray-300">
-                                            {new Date(
-                                                event.start
-                                            ).toLocaleString()}{" "}
-                                            -{" "}
-                                            {new Date(
-                                                event.end
-                                            ).toLocaleString()}
-                                        </p>
-                                        <span className="text-xs text-gray-400">
-                                            Source: {event.source}
-                                        </span>
-                                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Google Calendar Option */}
+                    <Link to="/calendar/google" className="block">
+                        <div className="bg-gray-700 rounded-lg p-6 hover:bg-gray-600 transition-colors">
+                            <div className="flex items-center space-x-4 mb-4">
+                                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
+                                    <svg
+                                        className="w-6 h-6 text-white"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
+                                    </svg>
                                 </div>
-                            ))}
+                                <h2 className="text-xl font-semibold">
+                                    Google Calendar
+                                </h2>
+                            </div>
+                            <p className="text-gray-400">
+                                Connect your Google Calendar to sync your events
+                                and meetings.
+                            </p>
                         </div>
-                    )}
+                    </Link>
+
+                    {/* Notion Calendar Option */}
+                    <Link to="/calendar/notion" className="block">
+                        <div className="bg-gray-700 rounded-lg p-6 hover:bg-gray-600 transition-colors">
+                            <div className="flex items-center space-x-4 mb-4">
+                                <div className="w-12 h-12 bg-gray-900 rounded-full flex items-center justify-center">
+                                    <svg
+                                        className="w-6 h-6 text-white"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm0 2v12h16V6H4zm2 2h12v2H6V8zm0 4h12v2H6v-2z" />
+                                    </svg>
+                                </div>
+                                <h2 className="text-xl font-semibold">
+                                    Notion Calendar
+                                </h2>
+                            </div>
+                            <p className="text-gray-400">
+                                Connect your Notion calendar to sync your tasks
+                                and events.
+                            </p>
+                        </div>
+                    </Link>
                 </div>
             </div>
         </div>

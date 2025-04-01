@@ -157,7 +157,23 @@ export const handleGoogleCallback = async (req, res) => {
 
 export const syncGoogleCalendar = async (req, res) => {
     try {
-        const user = await User.findById(req.user._id);
+        // Get user with calendar fields
+        const user = await User.findById(req.user._id).select(
+            "+googleCalendar"
+        );
+
+        if (!user?.googleCalendar?.accessToken) {
+            return res
+                .status(400)
+                .json({ message: "Google Calendar not connected" });
+        }
+
+        // Create new OAuth2 client for this request
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
 
         // Set up OAuth2 client with user's tokens
         oauth2Client.setCredentials({
@@ -173,6 +189,7 @@ export const syncGoogleCalendar = async (req, res) => {
             now.getTime() + 30 * 24 * 60 * 60 * 1000
         );
 
+        console.log("Fetching Google Calendar events...");
         const response = await calendar.events.list({
             calendarId: "primary",
             timeMin: now.toISOString(),
@@ -181,9 +198,14 @@ export const syncGoogleCalendar = async (req, res) => {
             orderBy: "startTime",
         });
 
+        console.log(`Found ${response.data.items.length} events`);
+
         // Process and save events
         const events = response.data.items.map((event) => ({
-            title: event.summary,
+            id: event.id,
+            title: event.summary || "Untitled Event",
+            description: event.description,
+            location: event.location,
             start: event.start.dateTime || event.start.date,
             end: event.end.dateTime || event.end.date,
             source: "google",
@@ -191,13 +213,18 @@ export const syncGoogleCalendar = async (req, res) => {
 
         // Update user's calendar events
         await User.findByIdAndUpdate(req.user._id, {
-            $push: { calendarEvents: { $each: events } },
+            $set: { calendarEvents: events }, // Replace all events instead of pushing
         });
 
+        console.log("Successfully synced calendar events");
         res.json({ message: "Calendar synced successfully", events });
     } catch (error) {
         console.error("Google Calendar Sync Error:", error);
-        res.status(500).json({ message: "Failed to sync calendar" });
+        console.error("Error details:", error.response?.data || error.message);
+        res.status(500).json({
+            message: "Failed to sync calendar",
+            error: error.response?.data?.message || error.message,
+        });
     }
 };
 
@@ -290,7 +317,9 @@ export const syncNotionCalendar = async (req, res) => {
 export const getCalendarEvents = async (req, res) => {
     try {
         const { source } = req.params;
-        const user = await User.findById(req.user._id);
+        const user = await User.findById(req.user._id).select(
+            "+googleCalendar"
+        );
 
         if (!user) {
             return res.status(404).json({ message: "User not found" });
@@ -305,6 +334,13 @@ export const getCalendarEvents = async (req, res) => {
                     .json({ message: "Google Calendar not connected" });
             }
 
+            // Create new OAuth2 client for this request
+            const oauth2Client = new google.auth.OAuth2(
+                process.env.GOOGLE_CLIENT_ID,
+                process.env.GOOGLE_CLIENT_SECRET,
+                process.env.GOOGLE_REDIRECT_URI
+            );
+
             // Set up OAuth2 client with user's tokens
             oauth2Client.setCredentials({
                 access_token: user.googleCalendar.accessToken,
@@ -316,27 +352,75 @@ export const getCalendarEvents = async (req, res) => {
                 auth: oauth2Client,
             });
 
-            // Get events for next 30 days
+            // First, get all calendar IDs the user has access to
+            console.log("Fetching calendar list...");
+            const calendarList = await calendar.calendarList.list();
+            console.log(`Found ${calendarList.data.items.length} calendars`);
+
+            // Get events for 6 months range (3 months before and 3 months after)
             const now = new Date();
-            const thirtyDaysFromNow = new Date(
-                now.getTime() + 30 * 24 * 60 * 60 * 1000
+            const threeMonthsAgo = new Date(
+                now.getFullYear(),
+                now.getMonth() - 3,
+                1
+            );
+            const threeMonthsFromNow = new Date(
+                now.getFullYear(),
+                now.getMonth() + 4,
+                0
             );
 
-            const response = await calendar.events.list({
-                calendarId: "primary",
-                timeMin: now.toISOString(),
-                timeMax: thirtyDaysFromNow.toISOString(),
-                singleEvents: true,
-                orderBy: "startTime",
-            });
+            console.log("Fetching events from all calendars...");
 
-            events = response.data.items.map((event) => ({
-                id: event.id,
-                title: event.summary,
-                start: event.start.dateTime || event.start.date,
-                end: event.end.dateTime || event.end.date,
-                source: "google",
-            }));
+            // Fetch events from all calendars
+            const allEvents = [];
+            for (const cal of calendarList.data.items) {
+                console.log(`Fetching events from calendar: ${cal.summary}`);
+                try {
+                    const response = await calendar.events.list({
+                        calendarId: cal.id,
+                        timeMin: threeMonthsAgo.toISOString(),
+                        timeMax: threeMonthsFromNow.toISOString(),
+                        singleEvents: true,
+                        orderBy: "startTime",
+                        maxResults: 2500,
+                        showDeleted: false,
+                    });
+
+                    const calendarEvents = response.data.items
+                        .filter((event) => event.status !== "cancelled")
+                        .map((event) => ({
+                            id: event.id,
+                            title: event.summary || "Untitled Event",
+                            description: event.description,
+                            location: event.location,
+                            start: event.start.dateTime || event.start.date,
+                            end: event.end.dateTime || event.end.date,
+                            source: "google",
+                            calendar: cal.summary,
+                            status: event.status,
+                            creator: event.creator?.email,
+                            organizer: event.organizer?.email,
+                        }));
+
+                    allEvents.push(...calendarEvents);
+                } catch (error) {
+                    console.error(
+                        `Error fetching events from calendar ${cal.summary}:`,
+                        error
+                    );
+                }
+            }
+
+            // Sort all events by start time
+            events = allEvents.sort(
+                (a, b) => new Date(a.start) - new Date(b.start)
+            );
+
+            console.log(
+                `Total events found across all calendars: ${events.length}`
+            );
+            console.log("Sample of processed events:", events.slice(0, 5));
         } else if (source === "notion") {
             if (!user.notion?.accessToken) {
                 return res
@@ -383,7 +467,11 @@ export const getCalendarEvents = async (req, res) => {
         res.json({ events });
     } catch (error) {
         console.error("Calendar Events Error:", error);
-        res.status(500).json({ message: "Failed to fetch calendar events" });
+        console.error("Error details:", error.response?.data || error.message);
+        res.status(500).json({
+            message: "Failed to fetch calendar events",
+            error: error.response?.data?.message || error.message,
+        });
     }
 };
 

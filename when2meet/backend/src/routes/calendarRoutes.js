@@ -17,7 +17,7 @@ const router = express.Router();
 // Google Calendar routes
 router.get("/auth/google/calendar", initiateGoogleAuth);
 router.get("/auth/google/callback", handleGoogleCallback);
-router.post("/sync/google", protect, syncGoogleCalendar);
+router.post("/sync/google", protect,syncGoogleCalendar);
 router.post("/auth/google/disconnect", protect, disconnectGoogleCalendar);
 
 // Notion routes

@@ -9,14 +9,16 @@ import {
     syncNotionCalendar,
     getCalendarEvents,
     getCalendarStatus,
+    disconnectGoogleCalendar,
 } from "../controllers/calendarController.js";
 
 const router = express.Router();
 
 // Google Calendar routes
 router.get("/auth/google/calendar", initiateGoogleAuth);
-router.get("/auth/google/calendar/callback", protect, handleGoogleCallback);
+router.get("/auth/google/callback", handleGoogleCallback);
 router.post("/sync/google", protect, syncGoogleCalendar);
+router.post("/auth/google/disconnect", protect, disconnectGoogleCalendar);
 
 // Notion routes
 router.get("/auth/notion", protect, initiateNotionAuth);

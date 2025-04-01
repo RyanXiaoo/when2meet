@@ -1,25 +1,33 @@
 import { google } from "googleapis";
 import { Client } from "@notionhq/client";
 import User from "../models/User.js";
-
-// Google OAuth2 configuration
-const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
-);
-
-// Log the configuration
-console.log("OAuth2 Client Configuration:", {
-    clientId: process.env.GOOGLE_CLIENT_ID?.substring(0, 10) + "...",
-    redirectUri: process.env.GOOGLE_REDIRECT_URI,
-});
+import jwt from "jsonwebtoken";
 
 // Google Calendar API scope
 const SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"];
 
 export const initiateGoogleAuth = (req, res) => {
     try {
+        // Get token from Authorization header
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return res.status(401).json({ message: "No token provided" });
+        }
+        const token = authHeader.split(" ")[1];
+
+        // Create new OAuth2 client for this request
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+
+        console.log("OAuth2 Client Configuration:", {
+            clientId: process.env.GOOGLE_CLIENT_ID?.substring(0, 10) + "...",
+            redirectUri: process.env.GOOGLE_REDIRECT_URI,
+            hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+        });
+
         // Manually construct the auth URL with all required parameters
         const baseUrl = "https://accounts.google.com/o/oauth2/v2/auth";
         const params = new URLSearchParams({
@@ -30,6 +38,7 @@ export const initiateGoogleAuth = (req, res) => {
             scope: SCOPES.join(" "),
             include_granted_scopes: "true",
             prompt: "consent",
+            state: token, // Pass the JWT token as state parameter
         });
 
         const authUrl = `${baseUrl}?${params.toString()}`;
@@ -43,20 +52,106 @@ export const initiateGoogleAuth = (req, res) => {
 
 export const handleGoogleCallback = async (req, res) => {
     try {
-        const { code } = req.query;
-        const { tokens } = await oauth2Client.getToken(code);
-
-        // Save tokens to user document
-        await User.findByIdAndUpdate(req.user._id, {
-            "googleCalendar.accessToken": tokens.access_token,
-            "googleCalendar.refreshToken": tokens.refresh_token,
-            "googleCalendar.expiry": tokens.expiry_date,
+        const { code, state } = req.query;
+        console.log("Callback received with code and state:", {
+            hasCode: !!code,
+            hasState: !!state,
+            stateLength: state?.length,
         });
 
-        res.redirect("/dashboard?calendar=google-connected");
+        if (!state) {
+            console.error("No state (token) provided in callback");
+            return res.redirect(
+                "http://localhost:5173/dashboard?error=google-auth-failed"
+            );
+        }
+
+        // Create new OAuth2 client for this request
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+
+        // Verify the JWT token
+        let decoded;
+        try {
+            decoded = jwt.verify(state, process.env.JWT_SECRET);
+            console.log("Successfully decoded JWT token:", {
+                userId: decoded.id,
+                tokenIsValid: !!decoded,
+            });
+        } catch (error) {
+            console.error("Failed to verify JWT:", error);
+            return res.redirect(
+                "http://localhost:5173/dashboard?error=google-auth-failed"
+            );
+        }
+
+        // Get tokens from Google
+        console.log("Getting tokens from Google with code...");
+        console.log("OAuth2 Client Config:", {
+            clientId: process.env.GOOGLE_CLIENT_ID?.substring(0, 10) + "...",
+            redirectUri: process.env.GOOGLE_REDIRECT_URI,
+            hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+        });
+
+        const { tokens } = await oauth2Client.getToken(code);
+        console.log("Successfully received Google tokens:", {
+            hasAccessToken: !!tokens.access_token,
+            hasRefreshToken: !!tokens.refresh_token,
+            expiryDate: tokens.expiry_date,
+            tokenLength: tokens.access_token?.length,
+        });
+
+        // Find user first to verify they exist
+        const user = await User.findById(decoded.id);
+        if (!user) {
+            console.error("User not found:", decoded.id);
+            return res.redirect(
+                "http://localhost:5173/dashboard?error=google-auth-failed"
+            );
+        }
+        console.log("Found user for token update:", user._id);
+
+        // Save tokens to user document
+        console.log("Attempting to save tokens to user document...");
+        const updatedUser = await User.findByIdAndUpdate(
+            decoded.id,
+            {
+                $set: {
+                    "googleCalendar.accessToken": tokens.access_token,
+                    "googleCalendar.refreshToken": tokens.refresh_token,
+                    "googleCalendar.expiry": new Date(tokens.expiry_date),
+                },
+            },
+            { new: true, select: "+googleCalendar" }
+        );
+
+        console.log("Token update result:", {
+            success: !!updatedUser,
+            hasAccessToken: !!updatedUser?.googleCalendar?.accessToken,
+            hasRefreshToken: !!updatedUser?.googleCalendar?.refreshToken,
+            expiry: updatedUser?.googleCalendar?.expiry,
+        });
+
+        if (!updatedUser?.googleCalendar?.accessToken) {
+            console.error("Failed to save tokens to user document");
+            return res.redirect(
+                "http://localhost:5173/dashboard?error=google-auth-failed"
+            );
+        }
+
+        console.log("Successfully updated user with Google tokens");
+        res.redirect(
+            "http://localhost:5173/dashboard?calendar=google-connected"
+        );
     } catch (error) {
         console.error("Google Calendar Auth Error:", error);
-        res.redirect("/dashboard?error=google-auth-failed");
+        console.error("Error details:", error.response?.data || error.message);
+        res.redirect(
+            "http://localhost:5173/dashboard?error=google-auth-failed"
+        );
     }
 };
 
@@ -294,24 +389,87 @@ export const getCalendarEvents = async (req, res) => {
 
 export const getCalendarStatus = async (req, res) => {
     try {
-        const { source } = req.params;
-        const user = await User.findById(req.user._id);
+        const { source } = req.query;
+        console.log("Status check request:", {
+            source,
+            userId: req.user?._id,
+            hasAuthHeader: !!req.headers.authorization,
+        });
+
+        if (!source) {
+            return res.status(400).json({ message: "Source is required" });
+        }
+
+        // Get fresh user data with calendar fields
+        const user = await User.findById(req.user._id)
+            .select("+googleCalendar +notion")
+            .lean();
 
         if (!user) {
+            console.error("User not found for status check");
             return res.status(404).json({ message: "User not found" });
         }
 
+        console.log("Found user calendar data:", {
+            userId: user._id,
+            googleCalendar: {
+                hasAccessToken: !!user.googleCalendar?.accessToken,
+                hasRefreshToken: !!user.googleCalendar?.refreshToken,
+                expiry: user.googleCalendar?.expiry,
+                tokenLength: user.googleCalendar?.accessToken?.length,
+            },
+            rawGoogleCalendar: user.googleCalendar, // Temporary log to debug
+        });
+
+        let isConnected = false;
         if (source === "google") {
-            const connected = !!user.googleCalendar?.accessToken;
-            return res.json({ connected });
+            // Check if we have both tokens and they haven't expired
+            isConnected = !!(
+                user.googleCalendar?.accessToken &&
+                user.googleCalendar?.refreshToken &&
+                user.googleCalendar?.expiry &&
+                new Date(user.googleCalendar.expiry) > new Date()
+            );
         } else if (source === "notion") {
-            const connected = !!user.notion?.accessToken;
-            return res.json({ connected });
+            isConnected = !!user.notion?.accessToken;
         }
 
-        res.status(400).json({ message: "Invalid calendar source" });
+        console.log(`${source} Calendar connection status:`, isConnected);
+        res.json({ connected: isConnected });
     } catch (error) {
-        console.error("Calendar Status Error:", error);
-        res.status(500).json({ message: "Failed to get calendar status" });
+        console.error("Error checking calendar status:", error);
+        res.status(500).json({ message: "Failed to check calendar status" });
+    }
+};
+
+export const disconnectGoogleCalendar = async (req, res) => {
+    try {
+        console.log("Disconnecting Google Calendar for user:", req.user._id);
+
+        // Remove Google Calendar tokens from user document
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user._id,
+            {
+                $unset: {
+                    "googleCalendar.accessToken": "",
+                    "googleCalendar.refreshToken": "",
+                    "googleCalendar.expiry": "",
+                },
+            },
+            { new: true, select: "+googleCalendar" }
+        );
+
+        if (!updatedUser) {
+            console.error("User not found for disconnect");
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        console.log("Successfully disconnected Google Calendar");
+        res.json({ message: "Successfully disconnected from Google Calendar" });
+    } catch (error) {
+        console.error("Error disconnecting Google Calendar:", error);
+        res.status(500).json({
+            message: "Failed to disconnect Google Calendar",
+        });
     }
 };

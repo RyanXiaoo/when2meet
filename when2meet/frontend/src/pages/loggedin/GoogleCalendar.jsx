@@ -11,32 +11,45 @@ export default function GoogleCalendar() {
     const [isConnected, setIsConnected] = useState(false);
     const location = useLocation();
 
-    // Check connection status on mount
+    // Check connection status on mount and when location changes
     useEffect(() => {
-        checkConnectionStatus();
-    }, []);
-
-    // Check for redirect status
-    useEffect(() => {
+        console.log("Location changed:", location.search);
         const params = new URLSearchParams(location.search);
         const calendarStatus = params.get("calendar");
         const errorStatus = params.get("error");
 
         if (calendarStatus === "google-connected") {
+            console.log("Google Calendar connected, checking status...");
             setSuccess("Successfully connected to Google Calendar!");
+            // Force immediate status check
             checkConnectionStatus();
-        } else if (calendarStatus === "synced") {
-            setSuccess("Calendar events synced successfully!");
+            // Set up periodic checks
+            const checkInterval = setInterval(checkConnectionStatus, 2000);
+            return () => clearInterval(checkInterval);
         } else if (errorStatus === "google-auth-failed") {
             setError("Failed to connect to Google Calendar. Please try again.");
         }
     }, [location]);
 
+    // Initial connection check
+    useEffect(() => {
+        console.log("Initial connection check...");
+        checkConnectionStatus();
+    }, []);
+
     const checkConnectionStatus = async () => {
         try {
-            const response = await axios.get("/calendar/status/google");
-            setIsConnected(response.data.connected);
-            if (response.data.connected) {
+            console.log("Checking Google Calendar connection status...");
+            const response = await axios.get("/calendar/status/google", {
+                params: { source: "google" },
+            });
+            console.log("Status response:", response.data);
+
+            const isNowConnected = response.data.connected;
+            setIsConnected(isNowConnected);
+
+            if (isNowConnected) {
+                console.log("Connected! Fetching events...");
                 fetchEvents();
             }
         } catch (error) {
@@ -52,6 +65,7 @@ export default function GoogleCalendar() {
             setLoading(true);
             setError("");
             const response = await axios.get("/calendar/events/google");
+            console.log("Fetched events:", response.data);
             setEvents(response.data.events || []);
         } catch (error) {
             console.error("Error fetching events:", error);
@@ -65,7 +79,9 @@ export default function GoogleCalendar() {
         try {
             setIsConnecting(true);
             setError(null);
+            console.log("Initiating Google Calendar connection...");
             const response = await axios.get("/calendar/auth/google/calendar");
+            console.log("Got auth URL:", response.data);
             if (response.data && response.data.url) {
                 window.location.href = response.data.url;
             } else {
@@ -94,6 +110,29 @@ export default function GoogleCalendar() {
             }
         } catch (err) {
             setError("Failed to sync calendar. Please try again.");
+        } finally {
+            setIsConnecting(false);
+        }
+    };
+
+    const handleDisconnect = async () => {
+        try {
+            setIsConnecting(true);
+            setError(null);
+
+            const response = await axios.post(
+                "/calendar/auth/google/disconnect"
+            );
+
+            setIsConnected(false);
+            setSuccess("Successfully disconnected from Google Calendar");
+            setEvents([]); // Clear the events list
+        } catch (error) {
+            console.error("Error disconnecting from Google Calendar:", error);
+            setError(
+                "Failed to disconnect from Google Calendar. Please try again."
+            );
+        } finally {
             setIsConnecting(false);
         }
     };
@@ -119,6 +158,20 @@ export default function GoogleCalendar() {
                     </div>
                 )}
 
+                {/* Connection Status */}
+                <div className="bg-gray-700/50 rounded-lg p-4 mb-4">
+                    <p className="text-sm">
+                        Status:{" "}
+                        {isConnected ? (
+                            <span className="text-green-500">Connected</span>
+                        ) : (
+                            <span className="text-yellow-500">
+                                Not Connected
+                            </span>
+                        )}
+                    </p>
+                </div>
+
                 {/* Google Calendar Integration Section */}
                 <div className="bg-gray-700 rounded-lg p-6 mb-6">
                     <h2 className="text-xl font-semibold mb-4">
@@ -134,23 +187,39 @@ export default function GoogleCalendar() {
                                         : "Connect your Google Calendar to sync your events"}
                                 </p>
                             </div>
-                            <button
-                                onClick={handleGoogleConnect}
-                                disabled={isConnecting}
-                                className={`px-4 py-2 rounded-md text-white ${
-                                    isConnecting
-                                        ? "bg-gray-400 cursor-not-allowed"
-                                        : isConnected
-                                        ? "bg-green-600"
-                                        : "bg-blue-600 hover:bg-blue-700"
-                                }`}
-                            >
-                                {isConnecting
-                                    ? "Connecting..."
-                                    : isConnected
-                                    ? "Connected"
-                                    : "Connect Google Calendar"}
-                            </button>
+                            <div className="flex items-center space-x-4">
+                                {isConnected ? (
+                                    <>
+                                        <button
+                                            onClick={handleDisconnect}
+                                            disabled={isConnecting}
+                                            className={`px-4 py-2 rounded ${
+                                                isConnecting
+                                                    ? "bg-gray-400 cursor-not-allowed"
+                                                    : "bg-red-500 hover:bg-red-600"
+                                            } text-white font-medium transition-colors`}
+                                        >
+                                            {isConnecting
+                                                ? "Disconnecting..."
+                                                : "Disconnect"}
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        onClick={handleGoogleConnect}
+                                        disabled={isConnecting}
+                                        className={`px-4 py-2 rounded ${
+                                            isConnecting
+                                                ? "bg-gray-400 cursor-not-allowed"
+                                                : "bg-blue-500 hover:bg-blue-600"
+                                        } text-white font-medium transition-colors`}
+                                    >
+                                        {isConnecting
+                                            ? "Connecting..."
+                                            : "Connect Google Calendar"}
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {isConnected && (
@@ -189,16 +258,16 @@ export default function GoogleCalendar() {
                             </p>
                         ) : (
                             <div className="space-y-4">
-                                {events.map((event) => (
+                                {events.map((event, index) => (
                                     <div
-                                        key={`google-${event.id}`}
+                                        key={event.id || index}
                                         className="flex items-center justify-between bg-gray-600 p-4 rounded-lg"
                                     >
                                         <div>
                                             <h3 className="font-medium">
                                                 {event.title}
                                             </h3>
-                                            <p className="text-sm text-gray-300">
+                                            <p className="text-sm text-gray-400">
                                                 {new Date(
                                                     event.start
                                                 ).toLocaleString()}{" "}

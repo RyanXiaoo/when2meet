@@ -25,7 +25,7 @@ export default function GoogleCalendar() {
         if (calendarStatus === "google-connected") {
             console.log("Google Calendar connected, checking status...");
             setSuccess("Successfully connected to Google Calendar!");
-            // Force immediate status check
+            // Force immediate status check and sync
             checkConnectionStatus();
             // Set up periodic checks
             const checkInterval = setInterval(checkConnectionStatus, 2000);
@@ -40,6 +40,28 @@ export default function GoogleCalendar() {
         console.log("Initial connection check...");
         checkConnectionStatus();
     }, []);
+
+    // Auto-sync every 5 minutes if connected
+    useEffect(() => {
+        let syncInterval;
+
+        if (isConnected) {
+            // Initial sync
+            handleSync();
+
+            // Set up periodic sync
+            syncInterval = setInterval(() => {
+                console.log("Auto-syncing calendar...");
+                handleSync();
+            }, 5 * 60 * 1000); // 5 minutes
+        }
+
+        return () => {
+            if (syncInterval) {
+                clearInterval(syncInterval);
+            }
+        };
+    }, [isConnected]);
 
     const checkConnectionStatus = async () => {
         try {
@@ -304,19 +326,7 @@ export default function GoogleCalendar() {
                     <h2 className="text-2xl font-bold">
                         Google Calendar Integration
                     </h2>
-                    {isConnected ? (
-                        <button
-                            onClick={handleDisconnect}
-                            disabled={isConnecting}
-                            className={`px-4 py-2 rounded ${
-                                isConnecting
-                                    ? "bg-gray-400 cursor-not-allowed"
-                                    : "bg-red-500 hover:bg-red-600"
-                            } text-white font-medium transition-colors`}
-                        >
-                            {isConnecting ? "Disconnecting..." : "Disconnect"}
-                        </button>
-                    ) : (
+                    {!isConnected && (
                         <button
                             onClick={handleGoogleConnect}
                             disabled={isConnecting}
@@ -435,17 +445,6 @@ export default function GoogleCalendar() {
                                     →
                                 </button>
                             </div>
-                            <button
-                                onClick={handleSync}
-                                disabled={isConnecting}
-                                className={`px-4 py-2 rounded ${
-                                    isConnecting
-                                        ? "bg-gray-400 cursor-not-allowed"
-                                        : "bg-green-500 hover:bg-green-600"
-                                } text-white font-medium transition-colors`}
-                            >
-                                {isConnecting ? "Syncing..." : "Sync Calendar"}
-                            </button>
                         </div>
 
                         {loading ? (

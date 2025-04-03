@@ -485,3 +485,84 @@ function getEventTextColor(colorId) {
     const whiteTextColors = ["3", "6", "8", "9", "11"];
     return whiteTextColors.includes(colorId) ? "#ffffff" : "#000000";
 }
+
+// Get calendar priorities
+export const getCalendarPriorities = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json({ priorities: user.calendarPriorities || [] });
+    } catch (error) {
+        console.error("Error getting calendar priorities:", error);
+        res.status(500).json({ message: "Error getting calendar priorities" });
+    }
+};
+
+// Save calendar priorities
+export const saveCalendarPriorities = async (req, res) => {
+    try {
+        console.log("Save priorities request:", {
+            userId: req.user?._id,
+            body: req.body,
+            hasAuth: !!req.headers.authorization,
+        });
+
+        const { priorities } = req.body;
+
+        if (!Array.isArray(priorities)) {
+            return res
+                .status(400)
+                .json({ message: "Invalid priorities format" });
+        }
+
+        // Validate each priority object
+        for (const priority of priorities) {
+            if (
+                typeof priority.type !== "string" ||
+                typeof priority.priority !== "number"
+            ) {
+                return res.status(400).json({
+                    message: "Invalid priority object format",
+                    invalidPriority: priority,
+                });
+            }
+        }
+
+        // Find and update user
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user._id,
+            { $set: { calendarPriorities: priorities } },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedUser) {
+            console.error("User not found:", req.user._id);
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        console.log("Successfully saved priorities:", {
+            userId: updatedUser._id,
+            prioritiesCount: priorities.length,
+            savedPriorities: updatedUser.calendarPriorities,
+        });
+
+        return res.json({
+            message: "Priorities saved successfully",
+            priorities: updatedUser.calendarPriorities,
+        });
+    } catch (error) {
+        console.error("Error in saveCalendarPriorities:", {
+            error: error.message,
+            stack: error.stack,
+            code: error.code,
+            userId: req.user?._id,
+        });
+        return res.status(500).json({
+            message: "Error saving calendar priorities",
+            error: error.message,
+        });
+    }
+};

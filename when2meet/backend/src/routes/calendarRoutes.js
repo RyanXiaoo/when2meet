@@ -7,6 +7,8 @@ import {
     getCalendarEvents,
     getCalendarStatus,
     disconnectGoogleCalendar,
+    getCalendarPriorities,
+    saveCalendarPriorities,
 } from "../controllers/calendarController.js";
 
 const router = express.Router();
@@ -22,5 +24,9 @@ router.get("/status/:source", protect, getCalendarStatus);
 
 // Get calendar events
 router.get("/events/:source", protect, getCalendarEvents);
+
+// Calendar priorities routes
+router.get("/priorities", protect, getCalendarPriorities);
+router.post("/priorities", protect, saveCalendarPriorities);
 
 export default router;

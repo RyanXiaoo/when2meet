@@ -97,6 +97,18 @@ const userSchema = new mongoose.Schema({
             },
         },
     ],
+    calendarPriorities: [
+        {
+            type: {
+                type: String,
+                required: true,
+            },
+            priority: {
+                type: Number,
+                required: true,
+            },
+        },
+    ],
 });
 
 // Encrypt password using bcrypt

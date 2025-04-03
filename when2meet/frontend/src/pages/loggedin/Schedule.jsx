@@ -68,11 +68,12 @@ export default function Schedule() {
     const [error, setError] = useState("");
     const [items, setItems] = useState([]);
     const [activeId, setActiveId] = useState(null);
+    const [saveStatus, setSaveStatus] = useState("");
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: {
-                distance: 5, // 5px movement required before drag starts
+                distance: 5,
             },
         }),
         useSensor(KeyboardSensor, {
@@ -82,38 +83,62 @@ export default function Schedule() {
 
     useEffect(() => {
         fetchEvents();
+        loadSavedPriorities();
     }, []);
 
-    useEffect(() => {
-        const uniqueTypes = new Map();
-        if (Array.isArray(events)) {
-            console.log("Processing events:", events);
-            events.forEach((event) => {
-                // Use the calendar property for the event type
-                const eventType = event.calendar;
-
-                if (
-                    eventType &&
-                    !eventType.includes("@") &&
-                    eventType !== "Default"
-                ) {
-                    console.log("Adding event type:", eventType);
-                    uniqueTypes.set(eventType, {
-                        id: eventType,
-                        color: event.backgroundColor || "#039be5",
-                    });
-                }
-            });
+    const loadSavedPriorities = async () => {
+        try {
+            const response = await axios.get("/calendar/priorities");
+            if (response.data && response.data.priorities) {
+                // We'll use this data when setting up items
+                return response.data.priorities;
+            }
+        } catch (err) {
+            console.error("Error loading priorities:", err);
         }
-        const newItems = Array.from(uniqueTypes.values());
-        console.log("Final unique calendar types:", newItems);
-        setItems(newItems);
+        return null;
+    };
+
+    useEffect(() => {
+        const setupItems = async () => {
+            const uniqueTypes = new Map();
+            const savedPriorities = await loadSavedPriorities();
+
+            if (Array.isArray(events)) {
+                events.forEach((event) => {
+                    const eventType = event.calendar;
+                    if (
+                        eventType &&
+                        !eventType.includes("@") &&
+                        eventType !== "Default"
+                    ) {
+                        // If we have saved priorities, use them; otherwise, use default order
+                        const savedPriority = savedPriorities?.find(
+                            (p) => p.type === eventType
+                        )?.priority;
+                        uniqueTypes.set(eventType, {
+                            id: eventType,
+                            color: event.backgroundColor || "#039be5",
+                            priority: savedPriority || 0.5, // Default priority
+                        });
+                    }
+                });
+            }
+
+            const newItems = Array.from(uniqueTypes.values());
+            // Sort by saved priority if available
+            if (savedPriorities) {
+                newItems.sort((a, b) => b.priority - a.priority);
+            }
+            setItems(newItems);
+        };
+
+        setupItems();
     }, [events]);
 
     const fetchEvents = async () => {
         try {
             const response = await axios.get("/calendar/events/google");
-            console.log("Raw calendar response:", response.data);
             if (response.data && response.data.events) {
                 setEvents(response.data.events);
             } else {
@@ -124,6 +149,59 @@ export default function Schedule() {
             console.error("Error fetching events:", err);
             setError("Failed to fetch calendar events");
             setLoading(false);
+        }
+    };
+
+    const savePriorities = async () => {
+        try {
+            setSaveStatus("Saving...");
+
+            // Calculate priority values based on position (10 to 1)
+            const prioritiesData = items.map((item, index) => {
+                const priority = 10 - (index * 9) / (items.length - 1 || 1);
+                return {
+                    type: String(item.id), // Ensure type is a string
+                    priority: Number(priority.toFixed(2)), // Ensure priority is a clean number
+                };
+            });
+
+            console.log("Saving priorities:", prioritiesData);
+
+            const response = await axios.post("/calendar/priorities", {
+                priorities: prioritiesData,
+            });
+
+            console.log("Save response:", response.data);
+
+            if (response.data.priorities) {
+                // Update local items with saved priorities
+                setItems((items) =>
+                    items.map((item) => {
+                        const savedPriority = response.data.priorities.find(
+                            (p) => p.type === item.id
+                        );
+                        return {
+                            ...item,
+                            priority: savedPriority
+                                ? savedPriority.priority
+                                : item.priority,
+                        };
+                    })
+                );
+            }
+
+            setSaveStatus("Saved successfully!");
+            setTimeout(() => setSaveStatus(""), 3000);
+        } catch (err) {
+            console.error("Error saving priorities:", {
+                error: err.message,
+                response: err.response?.data,
+                data: err.response?.data?.error,
+            });
+            setSaveStatus(
+                err.response?.data?.message || "Error saving priorities"
+            );
+            setTimeout(() => setSaveStatus(""), 3000);
         }
     };
 
@@ -141,7 +219,13 @@ export default function Schedule() {
                     (item) => item.id === active.id
                 );
                 const newIndex = items.findIndex((item) => item.id === over.id);
-                return arrayMove(items, oldIndex, newIndex);
+                const newItems = arrayMove(items, oldIndex, newIndex);
+
+                // Update priority values after reordering (10 to 1)
+                return newItems.map((item, index) => ({
+                    ...item,
+                    priority: 10 - (index * 9) / (newItems.length || 1),
+                }));
             });
         }
     }
@@ -158,25 +242,44 @@ export default function Schedule() {
     return (
         <div className="container mx-auto px-4 pt-6">
             <div className="bg-gray-800 rounded-lg p-6 text-white">
-                <h2 className="text-2xl font-bold mb-6">Schedule</h2>
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold">Schedule</h2>
+                    <div className="flex items-center gap-4">
+                        {saveStatus && (
+                            <span
+                                className={`text-sm ${
+                                    saveStatus.includes("Error")
+                                        ? "text-red-400"
+                                        : "text-green-400"
+                                }`}
+                            >
+                                {saveStatus}
+                            </span>
+                        )}
+                        <button
+                            onClick={savePriorities}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+                        >
+                            Save Priorities
+                        </button>
+                    </div>
+                </div>
 
                 <div className="bg-gray-700 rounded-lg p-6 mb-8">
                     <div className="relative h-48">
                         {/* Priority Line */}
                         <div className="flex justify-between mb-4">
-                            <div className="text-sm text-gray-300">
-                                Most important
+                            <div className="text-xs text-gray-400">
+                                Higher Priority
                             </div>
-                            <div className="text-sm text-gray-300">
-                                Least important
+                            <div className="text-xs text-gray-400">
+                                Lower Priority
                             </div>
                         </div>
 
                         {/* Line with Tick Marks */}
                         <div className="relative mb-8">
-                            {/* Main Line */}
                             <div className="absolute top-0 left-0 right-0 h-1 bg-gray-400"></div>
-                            {/* Tick Marks */}
                             {items.map((_, index) => (
                                 <div
                                     key={index}

@@ -62,7 +62,7 @@ export const handleGoogleCallback = async (req, res) => {
         if (!state) {
             console.error("No state (token) provided in callback");
             return res.redirect(
-                "http://localhost:5173/dashboard?error=google-auth-failed"
+                "http://localhost:5173/calendar/google?error=google-auth-failed"
             );
         }
 
@@ -84,38 +84,20 @@ export const handleGoogleCallback = async (req, res) => {
         } catch (error) {
             console.error("Failed to verify JWT:", error);
             return res.redirect(
-                "http://localhost:5173/dashboard?error=google-auth-failed"
+                "http://localhost:5173/calendar/google?error=google-auth-failed"
             );
         }
 
         // Get tokens from Google
         console.log("Getting tokens from Google with code...");
-        console.log("OAuth2 Client Config:", {
-            clientId: process.env.GOOGLE_CLIENT_ID?.substring(0, 10) + "...",
-            redirectUri: process.env.GOOGLE_REDIRECT_URI,
-            hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-        });
-
         const { tokens } = await oauth2Client.getToken(code);
         console.log("Successfully received Google tokens:", {
             hasAccessToken: !!tokens.access_token,
             hasRefreshToken: !!tokens.refresh_token,
             expiryDate: tokens.expiry_date,
-            tokenLength: tokens.access_token?.length,
         });
 
-        // Find user first to verify they exist
-        const user = await User.findById(decoded.id);
-        if (!user) {
-            console.error("User not found:", decoded.id);
-            return res.redirect(
-                "http://localhost:5173/dashboard?error=google-auth-failed"
-            );
-        }
-        console.log("Found user for token update:", user._id);
-
-        // Save tokens to user document
-        console.log("Attempting to save tokens to user document...");
+        // Update user with new tokens
         const updatedUser = await User.findByIdAndUpdate(
             decoded.id,
             {
@@ -125,32 +107,25 @@ export const handleGoogleCallback = async (req, res) => {
                     "googleCalendar.expiry": new Date(tokens.expiry_date),
                 },
             },
-            { new: true, select: "+googleCalendar" }
+            { new: true }
         );
 
-        console.log("Token update result:", {
-            success: !!updatedUser,
-            hasAccessToken: !!updatedUser?.googleCalendar?.accessToken,
-            hasRefreshToken: !!updatedUser?.googleCalendar?.refreshToken,
-            expiry: updatedUser?.googleCalendar?.expiry,
-        });
-
-        if (!updatedUser?.googleCalendar?.accessToken) {
-            console.error("Failed to save tokens to user document");
+        if (!updatedUser) {
+            console.error("Failed to update user with tokens");
             return res.redirect(
-                "http://localhost:5173/dashboard?error=google-auth-failed"
+                "http://localhost:5173/calendar/google?error=google-auth-failed"
             );
         }
 
         console.log("Successfully updated user with Google tokens");
         res.redirect(
-            "http://localhost:5173/dashboard?calendar=google-connected"
+            "http://localhost:5173/calendar/google?calendar=google-connected"
         );
     } catch (error) {
         console.error("Google Calendar Auth Error:", error);
         console.error("Error details:", error.response?.data || error.message);
         res.redirect(
-            "http://localhost:5173/dashboard?error=google-auth-failed"
+            "http://localhost:5173/calendar/google?error=google-auth-failed"
         );
     }
 };

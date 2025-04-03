@@ -16,7 +16,6 @@ import FriendsList from "./pages/loggedin/friends/FriendsList";
 import FriendRequests from "./pages/loggedin/friends/FriendRequests";
 import SentRequests from "./pages/loggedin/friends/SentRequests";
 import GoogleCalendar from "./pages/loggedin/GoogleCalendar";
-import NotionCalendar from "./pages/loggedin/NotionCalendar";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -61,7 +60,7 @@ function App() {
                             path="/calendar"
                             element={
                                 <ProtectedRoute>
-                                    <Calendar />
+                                    <Navigate to="/calendar/google" replace />
                                 </ProtectedRoute>
                             }
                         />
@@ -70,14 +69,6 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <GoogleCalendar />
-                                </ProtectedRoute>
-                            }
-                        />
-                        <Route
-                            path="/calendar/notion"
-                            element={
-                                <ProtectedRoute>
-                                    <NotionCalendar />
                                 </ProtectedRoute>
                             }
                         />

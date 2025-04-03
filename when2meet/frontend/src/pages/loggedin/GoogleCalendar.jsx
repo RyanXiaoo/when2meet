@@ -381,12 +381,57 @@ export default function GoogleCalendar() {
 
     const getEventsForDate = (date) => {
         return events.filter((event) => {
+            if (isAllDayEvent(event)) {
+                // For all-day events, compare the date components directly
+                const [year, month, day] = event.start.split("-").map(Number);
+
+                // Subtract 1 from month since JavaScript months are 0-based
+                const eventMonth = parseInt(month) - 1;
+                const eventDay = parseInt(day);
+
+                // Direct comparison of date components without creating Date objects
+                return (
+                    eventDay === date &&
+                    eventMonth === currentDate.getMonth() &&
+                    parseInt(year) === currentDate.getFullYear()
+                );
+            }
+
+            // For regular events, use timezone conversion
             const eventDate = new Date(event.start);
-            return (
-                eventDate.getDate() === date &&
-                eventDate.getMonth() === currentDate.getMonth() &&
-                eventDate.getFullYear() === currentDate.getFullYear()
+            const eventInET = new Date(
+                eventDate.toLocaleString("en-US", {
+                    timeZone: "America/New_York",
+                })
             );
+            return (
+                eventInET.getDate() === date &&
+                eventInET.getMonth() === currentDate.getMonth() &&
+                eventInET.getFullYear() === currentDate.getFullYear()
+            );
+        });
+    };
+
+    // Helper function to format date for all-day events
+    const formatAllDayEventDate = (dateString) => {
+        // For all-day events, parse the components directly
+        const [year, month, day] = dateString.split("-");
+
+        // Create a date string that won't be affected by timezone
+        const date = new Date(
+            year,
+            parseInt(month) - 1,
+            parseInt(day),
+            12,
+            0,
+            0
+        );
+
+        return date.toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
         });
     };
 
@@ -420,6 +465,22 @@ export default function GoogleCalendar() {
 
     const getEventsForDateInWeekView = (date) => {
         return events.filter((event) => {
+            // For all-day events, compare the date components directly
+            if (isAllDayEvent(event)) {
+                const [year, month, day] = event.start.split("-").map(Number);
+
+                // Subtract 1 from month since JavaScript months are 0-based
+                const eventMonth = parseInt(month) - 1;
+                const eventDay = parseInt(day);
+
+                return (
+                    eventDay === date.getDate() &&
+                    eventMonth === date.getMonth() &&
+                    parseInt(year) === date.getFullYear()
+                );
+            }
+
+            // For regular events, use timezone conversion
             const eventStart = new Date(event.start);
             const eventEnd = new Date(event.end);
             const dayStart = new Date(date);
@@ -427,17 +488,18 @@ export default function GoogleCalendar() {
             const dayEnd = new Date(date);
             dayEnd.setHours(23, 59, 59, 999);
 
-            // For all-day events, only show on the actual day
-            if (isAllDayEvent(event)) {
-                return (
-                    eventStart.getDate() === date.getDate() &&
-                    eventStart.getMonth() === date.getMonth() &&
-                    eventStart.getFullYear() === date.getFullYear()
-                );
-            }
+            const eventStartInET = new Date(
+                eventStart.toLocaleString("en-US", {
+                    timeZone: "America/New_York",
+                })
+            );
+            const eventEndInET = new Date(
+                eventEnd.toLocaleString("en-US", {
+                    timeZone: "America/New_York",
+                })
+            );
 
-            // For regular events, check if they overlap with this day
-            return eventStart <= dayEnd && eventEnd >= dayStart;
+            return eventStartInET <= dayEnd && eventEndInET >= dayStart;
         });
     };
 

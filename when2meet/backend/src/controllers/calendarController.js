@@ -302,30 +302,50 @@ export const getCalendarEvents = async (req, res) => {
 
                     const calendarEvents = response.data.items
                         .filter((event) => event.status !== "cancelled")
-                        .map((event) => ({
-                            id: event.id,
-                            title: event.summary || "Untitled Event",
-                            description: event.description,
-                            location: event.location,
-                            start: event.start.dateTime || event.start.date,
-                            end: event.end.dateTime || event.end.date,
-                            source: "google",
-                            calendar: cal.summary,
-                            status: event.status,
-                            creator: event.creator?.email,
-                            organizer: event.organizer?.email,
-                            colorId: event.colorId,
-                            calendarColorId: cal.colorId,
-                            // Extract event type from summary or calendar name
-                            eventType: getEventType(event.summary, cal.summary),
-                            // Keep original color from Google Calendar
-                            backgroundColor: event.colorId
-                                ? getEventColor(event.colorId)
-                                : cal.backgroundColor,
-                            foregroundColor: event.colorId
-                                ? getEventTextColor(event.colorId)
-                                : cal.foregroundColor,
-                        }));
+                        .map((event) => {
+                            const isAllDay = !event.start.dateTime;
+
+                            // Log all-day event details
+                            if (isAllDay) {
+                                console.log("All-day event found:", {
+                                    title: event.summary,
+                                    rawStart: event.start,
+                                    rawEnd: event.end,
+                                    startDate: event.start.date,
+                                    endDate: event.end.date,
+                                    calendar: cal.summary,
+                                });
+                            }
+
+                            return {
+                                id: event.id,
+                                title: event.summary || "Untitled Event",
+                                description: event.description,
+                                location: event.location,
+                                start: event.start.dateTime || event.start.date,
+                                end: event.end.dateTime || event.end.date,
+                                source: "google",
+                                calendar: cal.summary,
+                                status: event.status,
+                                isAllDay: isAllDay,
+                                creator: event.creator?.email,
+                                organizer: event.organizer?.email,
+                                colorId: event.colorId,
+                                calendarColorId: cal.colorId,
+                                // Extract event type from summary or calendar name
+                                eventType: getEventType(
+                                    event.summary,
+                                    cal.summary
+                                ),
+                                // Keep original color from Google Calendar
+                                backgroundColor: event.colorId
+                                    ? getEventColor(event.colorId)
+                                    : cal.backgroundColor,
+                                foregroundColor: event.colorId
+                                    ? getEventTextColor(event.colorId)
+                                    : cal.foregroundColor,
+                            };
+                        });
 
                     allEvents.push(...calendarEvents);
                 } catch (error) {

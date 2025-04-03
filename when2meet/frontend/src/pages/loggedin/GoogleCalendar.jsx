@@ -9,11 +9,14 @@ export default function GoogleCalendar() {
     const [loading, setLoading] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
+    const [view, setView] = useState("month");
     const location = useLocation();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [selectedDayEvents, setSelectedDayEvents] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
     // Check connection status on mount and when location changes
     useEffect(() => {
@@ -126,17 +129,100 @@ export default function GoogleCalendar() {
         });
     };
 
-    // Helper function to get event duration in pixels
-    const getEventHeight = (start, end) => {
-        const duration = (new Date(end) - new Date(start)) / (1000 * 60); // in minutes
-        return Math.max(duration, 30); // minimum height of 30px
+    const isAllDayEvent = (event) => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+
+        // Check if event is marked as all day in the event data
+        if (event.allDay) return true;
+
+        // Check if event starts at midnight and ends at midnight or 11:59 PM
+        const startTime = start.getHours() * 60 + start.getMinutes();
+        const endTime = end.getHours() * 60 + end.getMinutes();
+        const isFullDay =
+            startTime === 0 && (endTime === 0 || endTime === 1439);
+
+        // Check if event spans multiple days
+        const spansMultipleDays =
+            start.getDate() !== end.getDate() ||
+            start.getMonth() !== end.getMonth() ||
+            start.getFullYear() !== end.getFullYear();
+
+        return isFullDay || spansMultipleDays;
     };
 
-    // Helper function to get event position
     const getEventPosition = (start) => {
         const date = new Date(start);
-        const minutes = date.getHours() * 60 + date.getMinutes();
-        return minutes;
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
+        // Each hour is 80px (h-20 class), so multiply by that
+        return hours * 80 + (minutes / 60) * 80;
+    };
+
+    const getEventHeight = (start, end) => {
+        const startDate = new Date(start);
+        const endDate = new Date(end);
+
+        // If event spans multiple days, cap it at the end of the day
+        if (
+            startDate.getDate() !== endDate.getDate() ||
+            startDate.getMonth() !== endDate.getMonth() ||
+            startDate.getFullYear() !== endDate.getFullYear()
+        ) {
+            // Set end time to 11:59:59 PM of the start date
+            endDate.setHours(23, 59, 59);
+        }
+
+        const durationHours = (endDate - startDate) / (1000 * 60 * 60);
+        // Convert hours to pixels (each hour is 80px)
+        return Math.min(durationHours * 80, 1920 - getEventPosition(start)); // Ensure it doesn't overflow
+    };
+
+    const getOverlappingEvents = (events) => {
+        // Sort events by start time
+        const sortedEvents = [...events].sort(
+            (a, b) => new Date(a.start) - new Date(b.start)
+        );
+
+        // Group overlapping events
+        const groups = [];
+        let currentGroup = [];
+
+        for (const event of sortedEvents) {
+            if (currentGroup.length === 0) {
+                currentGroup.push(event);
+                continue;
+            }
+
+            const lastEvent = currentGroup[currentGroup.length - 1];
+            if (new Date(event.start) < new Date(lastEvent.end)) {
+                currentGroup.push(event);
+            } else {
+                if (currentGroup.length > 0) {
+                    groups.push([...currentGroup]);
+                }
+                currentGroup = [event];
+            }
+        }
+
+        if (currentGroup.length > 0) {
+            groups.push(currentGroup);
+        }
+
+        // Calculate width and position for overlapping events
+        const processedEvents = new Map();
+        groups.forEach((group) => {
+            const width = 100 / group.length;
+            group.forEach((event, index) => {
+                processedEvents.set(event.id || event.start, {
+                    width: `${width}%`,
+                    left: `${index * width}%`,
+                    zIndex: index + 1,
+                });
+            });
+        });
+
+        return processedEvents;
     };
 
     // Group events by date
@@ -319,6 +405,58 @@ export default function GoogleCalendar() {
         setIsModalOpen(true);
     };
 
+    const getWeekData = () => {
+        const startOfWeek = new Date(currentDate);
+        startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+
+        const week = [];
+        for (let i = 0; i < 7; i++) {
+            const day = new Date(startOfWeek);
+            day.setDate(startOfWeek.getDate() + i);
+            week.push(day);
+        }
+        return week;
+    };
+
+    const getEventsForDateInWeekView = (date) => {
+        return events.filter((event) => {
+            const eventStart = new Date(event.start);
+            const eventEnd = new Date(event.end);
+            const dayStart = new Date(date);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(date);
+            dayEnd.setHours(23, 59, 59, 999);
+
+            // For all-day events, only show on the actual day
+            if (isAllDayEvent(event)) {
+                return (
+                    eventStart.getDate() === date.getDate() &&
+                    eventStart.getMonth() === date.getMonth() &&
+                    eventStart.getFullYear() === date.getFullYear()
+                );
+            }
+
+            // For regular events, check if they overlap with this day
+            return eventStart <= dayEnd && eventEnd >= dayStart;
+        });
+    };
+
+    const navigateWeek = (direction) => {
+        setCurrentDate((prevDate) => {
+            const newDate = new Date(prevDate);
+            newDate.setDate(prevDate.getDate() + direction * 7);
+            return newDate;
+        });
+    };
+
+    const navigate = (direction) => {
+        if (view === "month") {
+            navigateMonth(direction);
+        } else {
+            navigateWeek(direction);
+        }
+    };
+
     return (
         <div className="container mx-auto px-4 pt-6">
             <div className="bg-gray-800 rounded-lg p-6 text-white">
@@ -429,7 +567,7 @@ export default function GoogleCalendar() {
                         <div className="flex justify-between items-center mb-6">
                             <div className="flex items-center space-x-4">
                                 <button
-                                    onClick={() => navigateMonth(-1)}
+                                    onClick={() => navigate(-1)}
                                     className="p-2 rounded hover:bg-gray-600"
                                 >
                                     ←
@@ -439,10 +577,32 @@ export default function GoogleCalendar() {
                                     {currentDate.getFullYear()}
                                 </h3>
                                 <button
-                                    onClick={() => navigateMonth(1)}
+                                    onClick={() => navigate(1)}
                                     className="p-2 rounded hover:bg-gray-600"
                                 >
                                     →
+                                </button>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <button
+                                    onClick={() => setView("month")}
+                                    className={`px-3 py-1 rounded ${
+                                        view === "month"
+                                            ? "bg-blue-500 text-white"
+                                            : "bg-gray-600 hover:bg-gray-500"
+                                    }`}
+                                >
+                                    Month
+                                </button>
+                                <button
+                                    onClick={() => setView("week")}
+                                    className={`px-3 py-1 rounded ${
+                                        view === "week"
+                                            ? "bg-blue-500 text-white"
+                                            : "bg-gray-600 hover:bg-gray-500"
+                                    }`}
+                                >
+                                    Week
                                 </button>
                             </div>
                         </div>
@@ -453,7 +613,7 @@ export default function GoogleCalendar() {
                                     Loading events...
                                 </p>
                             </div>
-                        ) : (
+                        ) : view === "month" ? (
                             <div className="calendar-grid">
                                 {/* Day headers */}
                                 <div className="grid grid-cols-7 gap-1 mb-2">
@@ -524,8 +684,12 @@ export default function GoogleCalendar() {
                                                                                 }
                                                                                 className="text-xs p-1.5 rounded-md shadow-sm hover:shadow-md transition-all duration-200"
                                                                                 style={{
-                                                                                    backgroundColor: event.backgroundColor || '#4f46e5',
-                                                                                    color: event.foregroundColor || '#ffffff',
+                                                                                    backgroundColor:
+                                                                                        event.backgroundColor ||
+                                                                                        "#4f46e5",
+                                                                                    color:
+                                                                                        event.foregroundColor ||
+                                                                                        "#ffffff",
                                                                                 }}
                                                                                 title={`${
                                                                                     event.title
@@ -548,10 +712,14 @@ export default function GoogleCalendar() {
                                                                                         )}
                                                                                     </span>
                                                                                     <span className="truncate flex-1">
-                                                                                        {event.title}
+                                                                                        {
+                                                                                            event.title
+                                                                                        }
                                                                                     </span>
                                                                                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/20 whitespace-nowrap">
-                                                                                        {event.eventType}
+                                                                                        {
+                                                                                            event.eventType
+                                                                                        }
                                                                                     </span>
                                                                                 </div>
                                                                             </div>
@@ -574,6 +742,262 @@ export default function GoogleCalendar() {
                                             );
                                         })
                                     )}
+                                </div>
+                            </div>
+                        ) : (
+                            // Week view with time slots
+                            <div className="calendar-grid">
+                                <div className="grid grid-cols-8 gap-1 mb-2">
+                                    <div className="w-16"></div>{" "}
+                                    {/* Time column header */}
+                                    {DAYS_OF_WEEK.map((day, index) => {
+                                        const date = getWeekData()[index];
+                                        const isToday =
+                                            date.getDate() ===
+                                                new Date().getDate() &&
+                                            date.getMonth() ===
+                                                new Date().getMonth() &&
+                                            date.getFullYear() ===
+                                                new Date().getFullYear();
+
+                                        return (
+                                            <div
+                                                key={day}
+                                                className={`text-center py-2 text-gray-400 font-medium ${
+                                                    isToday
+                                                        ? "text-blue-400"
+                                                        : ""
+                                                }`}
+                                            >
+                                                <div>{day}</div>
+                                                <div className="text-sm mt-1">
+                                                    {date.getDate()}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* All-day events section */}
+                                <div className="grid grid-cols-8 gap-1 mb-2">
+                                    <div className="text-right pr-2 text-gray-400 text-sm py-2">
+                                        All-day
+                                    </div>
+                                    {getWeekData().map((date, dayIndex) => {
+                                        const allDayEvents =
+                                            getEventsForDateInWeekView(
+                                                date
+                                            ).filter((event) =>
+                                                isAllDayEvent(event)
+                                            );
+                                        const isToday =
+                                            date.getDate() ===
+                                                new Date().getDate() &&
+                                            date.getMonth() ===
+                                                new Date().getMonth() &&
+                                            date.getFullYear() ===
+                                                new Date().getFullYear();
+
+                                        return (
+                                            <div
+                                                key={dayIndex}
+                                                className={`min-h-[60px] bg-gray-800/80 p-1 rounded-md ${
+                                                    isToday
+                                                        ? "ring-1 ring-blue-500"
+                                                        : ""
+                                                }`}
+                                            >
+                                                {allDayEvents.map(
+                                                    (event, eventIndex) => (
+                                                        <div
+                                                            key={
+                                                                event.id ||
+                                                                eventIndex
+                                                            }
+                                                            className="mb-1 last:mb-0"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedDayEvents(
+                                                                    [event]
+                                                                );
+                                                                setIsModalOpen(
+                                                                    true
+                                                                );
+                                                            }}
+                                                        >
+                                                            <div
+                                                                className="text-xs p-1.5 rounded-md shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
+                                                                style={{
+                                                                    backgroundColor:
+                                                                        event.backgroundColor ||
+                                                                        "#4f46e5",
+                                                                    color:
+                                                                        event.foregroundColor ||
+                                                                        "#ffffff",
+                                                                }}
+                                                                title={`${event.title} (All day)`}
+                                                            >
+                                                                <div className="font-medium truncate">
+                                                                    {
+                                                                        event.title
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="grid grid-cols-8 gap-1">
+                                    {/* Time slots */}
+                                    <div className="col-span-1">
+                                        {HOURS.map((hour) => (
+                                            <div
+                                                key={hour}
+                                                className="h-20 text-right pr-2 text-gray-400 text-sm border-t border-gray-700"
+                                            >
+                                                {hour === 0
+                                                    ? "12 AM"
+                                                    : hour < 12
+                                                    ? `${hour} AM`
+                                                    : hour === 12
+                                                    ? "12 PM"
+                                                    : `${hour - 12} PM`}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Days columns */}
+                                    {getWeekData().map((date, dayIndex) => {
+                                        const dateEvents =
+                                            getEventsForDateInWeekView(
+                                                date
+                                            ).filter(
+                                                (event) => !isAllDayEvent(event)
+                                            );
+                                        const overlappingEvents =
+                                            getOverlappingEvents(dateEvents);
+                                        const isToday =
+                                            date.getDate() ===
+                                                new Date().getDate() &&
+                                            date.getMonth() ===
+                                                new Date().getMonth() &&
+                                            date.getFullYear() ===
+                                                new Date().getFullYear();
+
+                                        return (
+                                            <div
+                                                key={dayIndex}
+                                                className={`relative h-[1920px] bg-gray-800/80 hover:bg-gray-700/80 transition-colors ${
+                                                    isToday
+                                                        ? "ring-1 ring-blue-500"
+                                                        : ""
+                                                }`}
+                                            >
+                                                {/* Hour grid lines */}
+                                                {HOURS.map((hour) => (
+                                                    <div
+                                                        key={hour}
+                                                        className="absolute w-full h-20 border-t border-gray-700"
+                                                        style={{
+                                                            top: `${
+                                                                hour * 80
+                                                            }px`,
+                                                        }}
+                                                    ></div>
+                                                ))}
+
+                                                {/* Regular events */}
+                                                {dateEvents.map(
+                                                    (event, eventIndex) => {
+                                                        const position =
+                                                            getEventPosition(
+                                                                event.start
+                                                            );
+                                                        const height =
+                                                            getEventHeight(
+                                                                event.start,
+                                                                event.end
+                                                            );
+                                                        const overlap =
+                                                            overlappingEvents.get(
+                                                                event.id ||
+                                                                    event.start
+                                                            );
+
+                                                        return (
+                                                            <div
+                                                                key={
+                                                                    event.id ||
+                                                                    eventIndex
+                                                                }
+                                                                className="absolute left-0 right-0 p-1"
+                                                                style={{
+                                                                    top: `${position}px`,
+                                                                    height: `${height}px`,
+                                                                    width:
+                                                                        overlap?.width ||
+                                                                        "100%",
+                                                                    left:
+                                                                        overlap?.left ||
+                                                                        "0",
+                                                                    zIndex:
+                                                                        overlap?.zIndex ||
+                                                                        1,
+                                                                }}
+                                                            >
+                                                                <div
+                                                                    className="h-full rounded-md p-1.5 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
+                                                                    style={{
+                                                                        backgroundColor:
+                                                                            event.backgroundColor ||
+                                                                            "#4f46e5",
+                                                                        color:
+                                                                            event.foregroundColor ||
+                                                                            "#ffffff",
+                                                                    }}
+                                                                    title={`${
+                                                                        event.title
+                                                                    } (${formatTime(
+                                                                        event.start
+                                                                    )} - ${formatTime(
+                                                                        event.end
+                                                                    )})`}
+                                                                    onClick={(
+                                                                        e
+                                                                    ) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedDayEvents(
+                                                                            [
+                                                                                event,
+                                                                            ]
+                                                                        );
+                                                                        setIsModalOpen(
+                                                                            true
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    <div className="text-xs font-medium">
+                                                                        {formatTime(
+                                                                            event.start
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-xs font-medium truncate">
+                                                                        {
+                                                                            event.title
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -610,8 +1034,10 @@ export default function GoogleCalendar() {
                                     key={event.id || index}
                                     className="bg-gray-700/50 rounded-xl p-4 hover:bg-gray-700 transition-all duration-200 hover:shadow-lg"
                                     style={{
-                                        backgroundColor: event.backgroundColor || '#4f46e5',
-                                        color: event.foregroundColor || '#ffffff',
+                                        backgroundColor:
+                                            event.backgroundColor || "#4f46e5",
+                                        color:
+                                            event.foregroundColor || "#ffffff",
                                     }}
                                 >
                                     <div className="font-semibold text-lg mb-1 flex justify-between items-center">

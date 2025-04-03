@@ -45,7 +45,7 @@ export default function Home() {
                     </div>
                     <div className="bg-gray-700/60 p-6 rounded-lg shadow-md">
                         <h2 className="text-xl font-bold mb-2">
-                            Connect your Google Calendar or Notion
+                            Connect your Google Calendar
                         </h2>
                         <p>
                             Import your schedule once and stay synced

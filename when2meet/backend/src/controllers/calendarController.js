@@ -1,5 +1,4 @@
 import { google } from "googleapis";
-import { Client } from "@notionhq/client";
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 
@@ -62,7 +61,7 @@ export const handleGoogleCallback = async (req, res) => {
         if (!state) {
             console.error("No state (token) provided in callback");
             return res.redirect(
-                "http://localhost:5173/calendar/google?error=google-auth-failed"
+                "http://localhost:5173/dashboard?error=google-auth-failed"
             );
         }
 
@@ -84,20 +83,38 @@ export const handleGoogleCallback = async (req, res) => {
         } catch (error) {
             console.error("Failed to verify JWT:", error);
             return res.redirect(
-                "http://localhost:5173/calendar/google?error=google-auth-failed"
+                "http://localhost:5173/dashboard?error=google-auth-failed"
             );
         }
 
         // Get tokens from Google
         console.log("Getting tokens from Google with code...");
+        console.log("OAuth2 Client Config:", {
+            clientId: process.env.GOOGLE_CLIENT_ID?.substring(0, 10) + "...",
+            redirectUri: process.env.GOOGLE_REDIRECT_URI,
+            hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+        });
+
         const { tokens } = await oauth2Client.getToken(code);
         console.log("Successfully received Google tokens:", {
             hasAccessToken: !!tokens.access_token,
             hasRefreshToken: !!tokens.refresh_token,
             expiryDate: tokens.expiry_date,
+            tokenLength: tokens.access_token?.length,
         });
 
-        // Update user with new tokens
+        // Find user first to verify they exist
+        const user = await User.findById(decoded.id);
+        if (!user) {
+            console.error("User not found:", decoded.id);
+            return res.redirect(
+                "http://localhost:5173/dashboard?error=google-auth-failed"
+            );
+        }
+        console.log("Found user for token update:", user._id);
+
+        // Save tokens to user document
+        console.log("Attempting to save tokens to user document...");
         const updatedUser = await User.findByIdAndUpdate(
             decoded.id,
             {
@@ -107,25 +124,32 @@ export const handleGoogleCallback = async (req, res) => {
                     "googleCalendar.expiry": new Date(tokens.expiry_date),
                 },
             },
-            { new: true }
+            { new: true, select: "+googleCalendar" }
         );
 
-        if (!updatedUser) {
-            console.error("Failed to update user with tokens");
+        console.log("Token update result:", {
+            success: !!updatedUser,
+            hasAccessToken: !!updatedUser?.googleCalendar?.accessToken,
+            hasRefreshToken: !!updatedUser?.googleCalendar?.refreshToken,
+            expiry: updatedUser?.googleCalendar?.expiry,
+        });
+
+        if (!updatedUser?.googleCalendar?.accessToken) {
+            console.error("Failed to save tokens to user document");
             return res.redirect(
-                "http://localhost:5173/calendar/google?error=google-auth-failed"
+                "http://localhost:5173/dashboard?error=google-auth-failed"
             );
         }
 
         console.log("Successfully updated user with Google tokens");
         res.redirect(
-            "http://localhost:5173/calendar/google?calendar=google-connected"
+            "http://localhost:5173/dashboard?calendar=google-connected"
         );
     } catch (error) {
         console.error("Google Calendar Auth Error:", error);
         console.error("Error details:", error.response?.data || error.message);
         res.redirect(
-            "http://localhost:5173/calendar/google?error=google-auth-failed"
+            "http://localhost:5173/dashboard?error=google-auth-failed"
         );
     }
 };
@@ -200,92 +224,6 @@ export const syncGoogleCalendar = async (req, res) => {
             message: "Failed to sync calendar",
             error: error.response?.data?.message || error.message,
         });
-    }
-};
-
-export const initiateNotionAuth = (req, res) => {
-    const notionAuthUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${
-        process.env.NOTION_CLIENT_ID
-    }&response_type=code&owner=user&state=${req.user._id.toString()}`;
-    res.json({ url: notionAuthUrl });
-};
-
-export const handleNotionCallback = async (req, res) => {
-    try {
-        const { code } = req.query;
-
-        // Exchange code for access token
-        const response = await fetch("https://api.notion.com/v1/oauth/token", {
-            method: "POST",
-            headers: {
-                Authorization: `Basic ${Buffer.from(
-                    `${process.env.NOTION_CLIENT_ID}:${process.env.NOTION_CLIENT_SECRET}`
-                ).toString("base64")}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ code, grant_type: "authorization_code" }),
-        });
-
-        const { access_token, workspace_id } = await response.json();
-
-        // Save Notion tokens to user document
-        await User.findByIdAndUpdate(req.user._id, {
-            "notion.accessToken": access_token,
-            "notion.workspaceId": workspace_id,
-        });
-
-        res.redirect("/dashboard?calendar=notion-connected");
-    } catch (error) {
-        console.error("Notion Auth Error:", error);
-        res.redirect("/dashboard?error=notion-auth-failed");
-    }
-};
-
-export const syncNotionCalendar = async (req, res) => {
-    try {
-        const user = await User.findById(req.user._id);
-        const notion = new Client({ auth: user.notion.accessToken });
-
-        // Query Notion database for calendar events
-        const response = await notion.databases.query({
-            database_id: req.body.databaseId, // User needs to provide their calendar database ID
-            filter: {
-                and: [
-                    {
-                        property: "Date",
-                        date: {
-                            is_not_empty: true,
-                        },
-                    },
-                ],
-            },
-            sorts: [
-                {
-                    property: "Date",
-                    direction: "ascending",
-                },
-            ],
-        });
-
-        // Process and save events
-        const events = response.results.map((page) => ({
-            title: page.properties.Name.title[0]?.plain_text || "Untitled",
-            start: page.properties.Date.date.start,
-            end:
-                page.properties.Date.date.end ||
-                page.properties.Date.date.start,
-            source: "notion",
-        }));
-
-        // Update user's calendar events
-        await User.findByIdAndUpdate(req.user._id, {
-            $push: { calendarEvents: { $each: events } },
-        });
-
-        res.json({ message: "Notion calendar synced successfully", events });
-    } catch (error) {
-        console.error("Notion Calendar Sync Error:", error);
-        res.status(500).json({ message: "Failed to sync Notion calendar" });
     }
 };
 
@@ -376,6 +314,17 @@ export const getCalendarEvents = async (req, res) => {
                             status: event.status,
                             creator: event.creator?.email,
                             organizer: event.organizer?.email,
+                            colorId: event.colorId,
+                            calendarColorId: cal.colorId,
+                            // Extract event type from summary or calendar name
+                            eventType: getEventType(event.summary, cal.summary),
+                            // Keep original color from Google Calendar
+                            backgroundColor: event.colorId
+                                ? getEventColor(event.colorId)
+                                : cal.backgroundColor,
+                            foregroundColor: event.colorId
+                                ? getEventTextColor(event.colorId)
+                                : cal.foregroundColor,
                         }));
 
                     allEvents.push(...calendarEvents);
@@ -396,45 +345,6 @@ export const getCalendarEvents = async (req, res) => {
                 `Total events found across all calendars: ${events.length}`
             );
             console.log("Sample of processed events:", events.slice(0, 5));
-        } else if (source === "notion") {
-            if (!user.notion?.accessToken) {
-                return res
-                    .status(400)
-                    .json({ message: "Notion not connected" });
-            }
-
-            const notion = new Client({ auth: user.notion.accessToken });
-
-            // Query Notion database for calendar events
-            const response = await notion.databases.query({
-                database_id: user.notion.calendarDatabaseId,
-                filter: {
-                    and: [
-                        {
-                            property: "Date",
-                            date: {
-                                is_not_empty: true,
-                            },
-                        },
-                    ],
-                },
-                sorts: [
-                    {
-                        property: "Date",
-                        direction: "ascending",
-                    },
-                ],
-            });
-
-            events = response.results.map((page) => ({
-                id: page.id,
-                title: page.properties.Name.title[0]?.plain_text || "Untitled",
-                start: page.properties.Date.date.start,
-                end:
-                    page.properties.Date.date.end ||
-                    page.properties.Date.date.start,
-                source: "notion",
-            }));
         } else {
             return res.status(400).json({ message: "Invalid calendar source" });
         }
@@ -465,7 +375,7 @@ export const getCalendarStatus = async (req, res) => {
 
         // Get fresh user data with calendar fields
         const user = await User.findById(req.user._id)
-            .select("+googleCalendar +notion")
+            .select("+googleCalendar")
             .lean();
 
         if (!user) {
@@ -493,8 +403,6 @@ export const getCalendarStatus = async (req, res) => {
                 user.googleCalendar?.expiry &&
                 new Date(user.googleCalendar.expiry) > new Date()
             );
-        } else if (source === "notion") {
-            isConnected = !!user.notion?.accessToken;
         }
 
         console.log(`${source} Calendar connection status:`, isConnected);
@@ -536,3 +444,44 @@ export const disconnectGoogleCalendar = async (req, res) => {
         });
     }
 };
+
+function getEventType(summary = "", calendarName = "") {
+    const text = `${summary} ${calendarName}`.toLowerCase();
+
+    // Define your categorization rules here
+    if (text.includes("1b") || text.includes("1-b")) return "1B";
+    if (text.includes("office hours") || text.includes("oh:"))
+        return "Office Hours";
+    if (text.includes("lecture") || text.includes("class")) return "Lecture";
+    if (text.includes("meeting")) return "Meeting";
+    if (text.includes("appointment")) return "Appointment";
+    if (text.includes("deadline") || text.includes("due")) return "Deadline";
+    if (text.includes("exam") || text.includes("quiz") || text.includes("test"))
+        return "Assessment";
+
+    return "Other"; // Default category
+}
+
+function getEventColor(colorId) {
+    // Google Calendar color IDs mapping
+    const colors = {
+        1: "#7986cb", // Lavender
+        2: "#33b679", // Sage
+        3: "#8e24aa", // Grape
+        4: "#e67c73", // Flamingo
+        5: "#f6c026", // Banana
+        6: "#f5511d", // Tangerine
+        7: "#039be5", // Peacock
+        8: "#616161", // Graphite
+        9: "#3f51b5", // Blueberry
+        10: "#0b8043", // Basil
+        11: "#d60000", // Tomato
+    };
+    return colors[colorId] || "#039be5"; // Default to Peacock blue if color not found
+}
+
+function getEventTextColor(colorId) {
+    // Define which color IDs should have white text
+    const whiteTextColors = ["3", "6", "8", "9", "11"];
+    return whiteTextColors.includes(colorId) ? "#ffffff" : "#000000";
+}

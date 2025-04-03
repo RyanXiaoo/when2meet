@@ -86,10 +86,6 @@ const userSchema = new mongoose.Schema({
         refreshToken: String,
         expiry: Date,
     },
-    notion: {
-        accessToken: String,
-        workspaceId: String,
-    },
     calendarEvents: [
         {
             title: String,
@@ -97,7 +93,7 @@ const userSchema = new mongoose.Schema({
             end: Date,
             source: {
                 type: String,
-                enum: ["google", "notion"],
+                enum: ["google"],
             },
         },
     ],

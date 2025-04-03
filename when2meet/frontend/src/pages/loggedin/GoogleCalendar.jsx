@@ -522,16 +522,22 @@ export default function GoogleCalendar() {
                                                                                     event.id ||
                                                                                     index
                                                                                 }
-                                                                                className="text-xs p-1.5 rounded-md bg-indigo-600/90 hover:bg-indigo-500 transition-colors cursor-pointer truncate shadow-sm"
+                                                                                className="text-xs p-1.5 rounded-md shadow-sm hover:shadow-md transition-all duration-200"
+                                                                                style={{
+                                                                                    backgroundColor: event.backgroundColor || '#4f46e5',
+                                                                                    color: event.foregroundColor || '#ffffff',
+                                                                                }}
                                                                                 title={`${
                                                                                     event.title
                                                                                 } (${formatTime(
                                                                                     event.start
                                                                                 )} - ${formatTime(
                                                                                     event.end
-                                                                                )})${
+                                                                                )})\n${
+                                                                                    event.eventType
+                                                                                }\n${
                                                                                     event.calendar
-                                                                                        ? `\nCalendar: ${event.calendar}`
+                                                                                        ? `Calendar: ${event.calendar}`
                                                                                         : ""
                                                                                 }`}
                                                                             >
@@ -541,10 +547,11 @@ export default function GoogleCalendar() {
                                                                                             event.start
                                                                                         )}
                                                                                     </span>
-                                                                                    <span className="truncate">
-                                                                                        {
-                                                                                            event.title
-                                                                                        }
+                                                                                    <span className="truncate flex-1">
+                                                                                        {event.title}
+                                                                                    </span>
+                                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/20 whitespace-nowrap">
+                                                                                        {event.eventType}
                                                                                     </span>
                                                                                 </div>
                                                                             </div>
@@ -602,28 +609,35 @@ export default function GoogleCalendar() {
                                 <div
                                     key={event.id || index}
                                     className="bg-gray-700/50 rounded-xl p-4 hover:bg-gray-700 transition-all duration-200 hover:shadow-lg"
+                                    style={{
+                                        backgroundColor: event.backgroundColor || '#4f46e5',
+                                        color: event.foregroundColor || '#ffffff',
+                                    }}
                                 >
-                                    <div className="font-semibold text-lg mb-1">
-                                        {event.title}
+                                    <div className="font-semibold text-lg mb-1 flex justify-between items-center">
+                                        <span>{event.title}</span>
+                                        <span className="text-sm px-2 py-1 rounded-full bg-black/20">
+                                            {event.eventType}
+                                        </span>
                                     </div>
-                                    <div className="text-sm text-blue-300 font-medium">
+                                    <div className="text-sm opacity-90 font-medium">
                                         {formatTime(event.start)} -{" "}
                                         {formatTime(event.end)}
                                     </div>
                                     {event.calendar && (
-                                        <div className="text-sm text-gray-300 mt-2 flex items-center">
+                                        <div className="text-sm opacity-75 mt-2 flex items-center">
                                             <span className="mr-2">📅</span>
                                             {event.calendar}
                                         </div>
                                     )}
                                     {event.location && (
-                                        <div className="text-sm text-gray-300 mt-1 flex items-center">
+                                        <div className="text-sm opacity-75 mt-1 flex items-center">
                                             <span className="mr-2">📍</span>
                                             {event.location}
                                         </div>
                                     )}
                                     {event.description && (
-                                        <div className="text-sm text-gray-400 mt-3 p-2 bg-gray-800/50 rounded-lg">
+                                        <div className="text-sm opacity-90 mt-3 p-2 rounded-lg bg-black/10">
                                             {event.description}
                                         </div>
                                     )}

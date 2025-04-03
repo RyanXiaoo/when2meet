@@ -50,6 +50,16 @@ export default function Navbar() {
                                 >
                                     Calendar
                                 </Link>
+                                <Link
+                                    to="/schedule"
+                                    className={`px-4 py-3 text-sm font-medium ${
+                                        isActive("/schedule")
+                                            ? "text-white border-b-2 border-blue-500"
+                                            : "text-gray-300 hover:text-white hover:border-b-2 hover:border-blue-400"
+                                    } transition-colors duration-200`}
+                                >
+                                    Schedule
+                                </Link>
                                 <div className="relative group">
                                     <div
                                         className={`px-4 py-3 text-sm font-medium cursor-default ${

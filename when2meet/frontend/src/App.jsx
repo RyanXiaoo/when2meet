@@ -16,6 +16,7 @@ import FriendsList from "./pages/loggedin/friends/FriendsList";
 import FriendRequests from "./pages/loggedin/friends/FriendRequests";
 import SentRequests from "./pages/loggedin/friends/SentRequests";
 import GoogleCalendar from "./pages/loggedin/GoogleCalendar";
+import Schedule from "./pages/loggedin/Schedule";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -69,6 +70,14 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <GoogleCalendar />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/schedule"
+                            element={
+                                <ProtectedRoute>
+                                    <Schedule />
                                 </ProtectedRoute>
                             }
                         />

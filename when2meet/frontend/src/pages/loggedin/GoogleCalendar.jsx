@@ -10,52 +10,104 @@ export default function GoogleCalendar() {
     const [isConnecting, setIsConnecting] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [view, setView] = useState("month");
+    const [lastSyncTime, setLastSyncTime] = useState(null);
     const location = useLocation();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [selectedDayEvents, setSelectedDayEvents] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isFetchingFresh, setIsFetchingFresh] = useState(false);
 
     const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-    // Check connection status on mount and when location changes
+    // Load cached events and connection status on mount
     useEffect(() => {
-        console.log("Location changed:", location.search);
+        const cachedEvents = localStorage.getItem("calendarEvents");
+        const cachedSyncTime = localStorage.getItem("lastSyncTime");
+        const cachedConnectionStatus = localStorage.getItem(
+            "calendarConnectionStatus"
+        );
+
+        // Set cached data immediately
+        if (cachedEvents) {
+            setEvents(JSON.parse(cachedEvents));
+            setLastSyncTime(cachedSyncTime);
+        }
+
+        if (cachedConnectionStatus) {
+            setIsConnected(JSON.parse(cachedConnectionStatus));
+        }
+
+        // Only check for updates if we don't have fresh data
+        if (!cachedEvents || !cachedSyncTime || shouldSync()) {
+            const checkForUpdates = async () => {
+                try {
+                    const response = await axios.get(
+                        "/calendar/status/google",
+                        {
+                            params: { source: "google" },
+                        }
+                    );
+
+                    const isNowConnected = response.data.connected;
+                    setIsConnected(isNowConnected);
+                    localStorage.setItem(
+                        "calendarConnectionStatus",
+                        JSON.stringify(isNowConnected)
+                    );
+
+                    if (isNowConnected) {
+                        console.log("Fetching fresh data");
+                        setIsFetchingFresh(true);
+                        await fetchEvents(true);
+                        setIsFetchingFresh(false);
+                    }
+                } catch (error) {
+                    console.error("Error checking for updates:", error);
+                }
+            };
+
+            checkForUpdates();
+        }
+    }, []);
+
+    // Check if we need to sync
+    const shouldSync = () => {
+        if (!lastSyncTime) return true;
+
+        const lastSync = new Date(lastSyncTime);
+        const now = new Date();
+        const hoursSinceLastSync = (now - lastSync) / (1000 * 60 * 60);
+
+        // Sync if it's been more than 1 hour
+        return hoursSinceLastSync > 1;
+    };
+
+    // Check connection status only when URL parameters change
+    useEffect(() => {
         const params = new URLSearchParams(location.search);
         const calendarStatus = params.get("calendar");
         const errorStatus = params.get("error");
 
         if (calendarStatus === "google-connected") {
-            console.log("Google Calendar connected, checking status...");
             setSuccess("Successfully connected to Google Calendar!");
-            // Force immediate status check and sync
-            checkConnectionStatus();
-            // Set up periodic checks
-            const checkInterval = setInterval(checkConnectionStatus, 2000);
-            return () => clearInterval(checkInterval);
+            // No need to check status here as it will be handled by the auto-sync
         } else if (errorStatus === "google-auth-failed") {
             setError("Failed to connect to Google Calendar. Please try again.");
         }
     }, [location]);
 
-    // Initial connection check
-    useEffect(() => {
-        console.log("Initial connection check...");
-        checkConnectionStatus();
-    }, []);
-
-    // Auto-sync every 5 minutes if connected
+    // Auto-sync every 5 minutes if connected, but don't sync immediately
     useEffect(() => {
         let syncInterval;
 
         if (isConnected) {
-            // Initial sync
-            handleSync();
-
-            // Set up periodic sync
+            // Set up periodic sync without initial sync
             syncInterval = setInterval(() => {
                 console.log("Auto-syncing calendar...");
-                handleSync();
+                if (shouldSync()) {
+                    handleSync();
+                }
             }, 5 * 60 * 1000); // 5 minutes
         }
 
@@ -87,10 +139,16 @@ export default function GoogleCalendar() {
         }
     };
 
-    const fetchEvents = async () => {
+    const fetchEvents = async (forceFetch = false) => {
         if (!isConnected) return;
 
         try {
+            // If we have cached events and don't need to force fetch, skip the API call
+            if (!forceFetch && !shouldSync()) {
+                console.log("Using cached events");
+                return;
+            }
+
             setLoading(true);
             setError("");
             const response = await axios.get("/calendar/events/google");
@@ -101,16 +159,14 @@ export default function GoogleCalendar() {
                 (a, b) => new Date(a.start) - new Date(b.start)
             );
 
-            // Group events by date
-            const groupedEvents = sortedEvents.reduce((groups, event) => {
-                const date = new Date(event.start).toLocaleDateString();
-                if (!groups[date]) {
-                    groups[date] = [];
-                }
-                groups[date].push(event);
-                return groups;
-            }, {});
+            // Update cache
+            localStorage.setItem(
+                "calendarEvents",
+                JSON.stringify(sortedEvents)
+            );
+            localStorage.setItem("lastSyncTime", new Date().toISOString());
 
+            setLastSyncTime(new Date().toISOString());
             setEvents(sortedEvents);
         } catch (error) {
             console.error("Error fetching events:", error);
@@ -273,19 +329,11 @@ export default function GoogleCalendar() {
             console.log("Sync response:", syncResponse.data);
 
             // Then fetch the updated events
-            const eventsResponse = await axios.get("/calendar/events/google");
-            console.log("Updated events:", eventsResponse.data);
-
-            // Sort and set the events
-            const sortedEvents = (eventsResponse.data.events || []).sort(
-                (a, b) => new Date(a.start) - new Date(b.start)
-            );
-            setEvents(sortedEvents);
+            await fetchEvents(true); // Force fetch new events
 
             // Show success message with event count
-            const eventCount = sortedEvents.length;
             setSuccess(
-                `Successfully synced ${eventCount} events from Google Calendar`
+                `Successfully synced ${events.length} events from Google Calendar`
             );
         } catch (err) {
             console.error("Sync error:", err);
@@ -310,6 +358,11 @@ export default function GoogleCalendar() {
             setIsConnected(false);
             setSuccess("Successfully disconnected from Google Calendar");
             setEvents([]); // Clear the events list
+
+            // Clear cache
+            localStorage.removeItem("calendarEvents");
+            localStorage.removeItem("lastSyncTime");
+            setLastSyncTime(null);
         } catch (error) {
             console.error("Error disconnecting from Google Calendar:", error);
             setError(
